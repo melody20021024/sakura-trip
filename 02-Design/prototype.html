@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>櫻旅 v2 — 高保真原型</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{ --ease:cubic-bezier(.2,.8,.2,1); }
+  body{ font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','PingFang TC',sans-serif; }
+  .pulse{ animation:pulse 1s var(--ease) infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.4} }
+  .sheet{ transition:transform .18s var(--ease); }
+  .drag-ghost{ box-shadow:0 8px 24px rgba(244,63,94,.25); transform:scale(1.02); }
+  .remote-hl{ animation:rhl 3s var(--ease); }
+  @keyframes rhl{ 0%,100%{background:#fdf2f8} 30%{background:#fef3c7} }
+  @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
+  [draggable]{ cursor:grab; }
+</style>
+</head>
+<body class="bg-gradient-to-b from-pink-50 via-rose-50 to-pink-100 text-rose-900 pb-28">
+<div class="max-w-2xl mx-auto">
+
+  <!-- Header + 同步徽章 (C-12) -->
+  <header class="sticky top-0 z-20 bg-white/70 backdrop-blur border-b border-pink-100">
+    <div class="px-4 py-3 flex items-center gap-2">
+      <span class="text-2xl">🌸</span>
+      <h1 class="text-lg font-bold text-rose-500 truncate flex-1">九州・沖繩之旅 🌸</h1>
+      <button id="syncBadge" role="status" aria-live="polite" class="text-[11px] rounded-full px-2 py-1 flex items-center gap-1 bg-emerald-50 text-emerald-600">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span><span id="syncTxt">已同步</span>
+      </button>
+      <span class="text-xs text-rose-300 flex items-center gap-1">👥 3</span>
+    </div>
+    <!-- OfflineBanner (C-17) -->
+    <div id="offBanner" class="hidden bg-amber-100 text-amber-700 text-xs text-center py-1">📴 離線中・2 筆待同步</div>
+  </header>
+
+  <main class="px-4 py-4 space-y-4">
+
+    <!-- ============ P-01 行程 ============ -->
+    <section data-tab="trip">
+      <div class="bg-white/80 rounded-2xl border border-pink-100 shadow-sm p-3">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="bg-rose-400 text-white text-xs rounded-full w-7 h-7 flex items-center justify-center">D1</span>
+          <span class="font-medium text-sm">6月10日 週三</span><span class="flex-1"></span>
+          <button class="text-rose-400 w-9 h-9 grid place-items-center" aria-label="新增項目">＋</button>
+        </div>
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <input value="大分・由布院" class="bg-pink-50 border border-pink-100 rounded-lg px-2 py-1.5 text-xs" />
+          <div class="flex items-center gap-1 bg-pink-50 border border-pink-100 rounded-lg px-2"><span class="text-rose-300">🛏</span><input value="由布院 溫泉旅館" class="bg-transparent py-1.5 text-xs w-full focus:outline-none"/></div>
+        </div>
+        <!-- 可拖曳項目列 (C-08 + C-15 把手) -->
+        <ul id="dayItems" class="space-y-1.5">
+          <li draggable="true" class="flex items-start gap-2 bg-pink-50 rounded-xl p-2.5">
+            <span class="drag-handle text-rose-300 select-none w-6 h-11 grid place-items-center -my-1" aria-label="拖曳排序" title="拖曳排序">⠿</span>
+            <span class="text-[11px] rounded-md px-1.5 py-0.5 bg-sky-100 text-sky-600 shrink-0">🚉 交通</span>
+            <div class="flex-1 min-w-0"><div class="text-sm font-medium">抵達大分機場</div><div class="text-xs text-rose-400">去程航班抵達</div></div>
+            <button class="text-sky-400 w-9 h-9 grid place-items-center" aria-label="地圖">📍</button>
+            <button class="del text-rose-200 hover:text-rose-500 w-9 h-9 grid place-items-center" aria-label="刪除">✕</button>
+          </li>
+          <li draggable="true" class="flex items-start gap-2 bg-pink-50 rounded-xl p-2.5">
+            <span class="drag-handle text-rose-300 select-none w-6 h-11 grid place-items-center -my-1" aria-label="拖曳排序" title="拖曳排序">⠿</span>
+            <span class="text-[11px] rounded-md px-1.5 py-0.5 bg-purple-100 text-purple-600 shrink-0">📍 景點</span>
+            <div class="flex-1 min-w-0"><div class="text-sm font-medium">金鱗湖・湯之坪街道散策</div></div>
+            <button class="text-sky-400 w-9 h-9 grid place-items-center" aria-label="地圖">📍</button>
+            <button class="del text-rose-200 hover:text-rose-500 w-9 h-9 grid place-items-center" aria-label="刪除">✕</button>
+          </li>
+          <li draggable="true" class="flex items-start gap-2 bg-pink-50 rounded-xl p-2.5">
+            <span class="drag-handle text-rose-300 select-none w-6 h-11 grid place-items-center -my-1" aria-label="拖曳排序" title="拖曳排序">⠿</span>
+            <span class="text-[11px] rounded-md px-1.5 py-0.5 bg-amber-100 text-amber-600 shrink-0">🍜 美食</span>
+            <div class="flex-1 min-w-0"><div class="text-sm font-medium">溫泉旅館會席晚餐</div></div>
+            <button class="text-sky-400 w-9 h-9 grid place-items-center" aria-label="地圖">📍</button>
+            <button class="del text-rose-200 hover:text-rose-500 w-9 h-9 grid place-items-center" aria-label="刪除">✕</button>
+          </li>
+        </ul>
+        <p class="text-[11px] text-rose-300 mt-2">↑ 拖曳左側 ⠿ 把手可排序（DDR-04）。刪除會跳確認（DDR-06）。</p>
+      </div>
+    </section>
+
+    <!-- ============ P-02 帳本 ============ -->
+    <section data-tab="money" class="hidden space-y-4">
+      <div class="bg-white/80 rounded-2xl border border-pink-100 shadow-sm p-4">
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div><div class="text-xs text-rose-400">日幣花費</div><div class="text-xl font-bold text-rose-500">¥86,400</div></div>
+          <div><div class="text-xs text-rose-400">台幣花費</div><div class="text-xl font-bold text-rose-500">NT$3,200</div></div>
+        </div>
+        <!-- BudgetBar (C-13) -->
+        <div class="mb-1 flex justify-between text-xs"><span class="text-rose-400">已花 ¥104,640 / 預算 ¥120,000</span><span class="text-emerald-600 font-medium">87%</span></div>
+        <div class="h-2.5 rounded-full bg-pink-100 overflow-hidden"><div class="h-full bg-amber-400" style="width:87%"></div></div>
+        <p class="text-[11px] text-amber-600 mt-1">已用 87%，注意控管</p>
+      </div>
+
+      <!-- CategoryStats (C-14) -->
+      <div class="bg-white/80 rounded-2xl border border-pink-100 shadow-sm p-4">
+        <div class="font-bold text-rose-500 mb-3">分類統計（換算日幣）</div>
+        <div class="space-y-2.5 text-xs">
+          <div><div class="flex justify-between mb-0.5"><span>🛏 住宿</span><span class="text-rose-400">¥42,000・40%</span></div><div class="h-2 rounded bg-pink-100"><div class="h-full rounded bg-rose-300" style="width:40%"></div></div></div>
+          <div><div class="flex justify-between mb-0.5"><span>🍜 吃</span><span class="text-rose-400">¥28,640・27%</span></div><div class="h-2 rounded bg-pink-100"><div class="h-full rounded bg-amber-400" style="width:27%"></div></div></div>
+          <div><div class="flex justify-between mb-0.5"><span>🚉 交通</span><span class="text-rose-400">¥18,000・17%</span></div><div class="h-2 rounded bg-pink-100"><div class="h-full rounded bg-sky-400" style="width:17%"></div></div></div>
+          <div><div class="flex justify-between mb-0.5"><span>🛍 購物</span><span class="text-rose-400">¥10,000・10%</span></div><div class="h-2 rounded bg-pink-100"><div class="h-full rounded bg-pink-400" style="width:10%"></div></div></div>
+          <div><div class="flex justify-between mb-0.5"><span>🎫 門票</span><span class="text-rose-400">¥6,000・6%</span></div><div class="h-2 rounded bg-pink-100"><div class="h-full rounded bg-purple-400" style="width:6%"></div></div></div>
+        </div>
+      </div>
+
+      <!-- 記帳表單含分類 (C-10) -->
+      <div class="bg-white/80 rounded-2xl border border-pink-100 shadow-sm p-4">
+        <div class="font-bold text-rose-500 mb-3">記一筆</div>
+        <input placeholder="花費項目，例：晚餐 燒肉" class="w-full bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm mb-2"/>
+        <div class="text-xs text-rose-400 mb-1">分類：</div>
+        <div class="flex flex-wrap gap-1.5 mb-2" id="catPills">
+          <button class="cat text-xs rounded-full px-3 py-1.5 bg-rose-500 text-white">🍜 吃</button>
+          <button class="cat text-xs rounded-full px-3 py-1.5 bg-white text-rose-300 border border-dashed border-rose-200">🛏 住</button>
+          <button class="cat text-xs rounded-full px-3 py-1.5 bg-white text-rose-300 border border-dashed border-rose-200">🚉 交通</button>
+          <button class="cat text-xs rounded-full px-3 py-1.5 bg-white text-rose-300 border border-dashed border-rose-200">🛍 購物</button>
+          <button class="cat text-xs rounded-full px-3 py-1.5 bg-white text-rose-300 border border-dashed border-rose-200">🎫 門票</button>
+          <button class="cat text-xs rounded-full px-3 py-1.5 bg-white text-rose-300 border border-dashed border-rose-200">其他</button>
+        </div>
+        <button class="w-full bg-rose-400 text-white rounded-xl py-2 text-sm font-medium">記一筆</button>
+      </div>
+    </section>
+
+    <!-- ============ P-03 清單（食 / 購 / 打包） ============ -->
+    <section data-tab="lists" class="hidden space-y-4">
+      <!-- 美食清單 (F-30，沿用 v1) -->
+      <div class="bg-white/80 rounded-2xl border border-pink-100 shadow-sm p-4">
+        <div class="flex items-center gap-2 mb-3"><span class="font-bold text-rose-500 flex-1">🍜 美食清單</span><span class="text-xs text-rose-300">0/3</span></div>
+        <div class="space-y-2 mb-3">
+          <input placeholder="想吃的，例：一蘭拉麵" class="w-full bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm"/>
+          <div class="flex gap-2"><input placeholder="地點/店名 (用於地圖)" class="flex-1 bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm"/><button class="shrink-0 bg-rose-400 text-white rounded-xl px-4 text-sm">＋</button></div>
+        </div>
+        <ul class="space-y-1.5 text-sm">
+          <li class="flex items-center gap-2 bg-pink-50 rounded-xl p-2.5"><span class="w-6 h-6 rounded-full border-2 border-pink-200 shrink-0"></span><div class="flex-1 min-w-0"><div class="font-medium">一蘭拉麵 福岡總本店</div><div class="text-xs text-rose-400">福岡 中洲川端</div></div><button class="text-sky-400 w-9 h-9 grid place-items-center" aria-label="地圖">📍</button></li>
+          <li class="flex items-center gap-2 bg-pink-50 rounded-xl p-2.5"><span class="w-6 h-6 rounded-full border-2 border-pink-200 shrink-0"></span><div class="flex-1 min-w-0"><div class="font-medium">柳川 蒸籠鰻魚飯</div><div class="text-xs text-rose-400">柳川</div></div><button class="text-sky-400 w-9 h-9 grid place-items-center" aria-label="地圖">📍</button></li>
+          <li class="flex items-center gap-2 bg-pink-50 rounded-xl p-2.5"><span class="w-6 h-6 rounded-full border-2 border-pink-200 shrink-0"></span><div class="flex-1 min-w-0"><div class="font-medium">沖繩牛排館</div><div class="text-xs text-rose-400">那霸 國際通</div></div><button class="text-sky-400 w-9 h-9 grid place-items-center" aria-label="地圖">📍</button></li>
+        </ul>
+      </div>
+
+      <!-- 待購清單 (F-30，沿用 v1) -->
+      <div class="bg-white/80 rounded-2xl border border-pink-100 shadow-sm p-4">
+        <div class="flex items-center gap-2 mb-3"><span class="font-bold text-rose-500 flex-1">🛍 待購物清單</span><span class="text-xs text-rose-300">0/2</span></div>
+        <div class="space-y-2 mb-3">
+          <input placeholder="想買的，例：白色戀人" class="w-full bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm"/>
+          <div class="flex gap-2"><input placeholder="店家/品牌 (選填)" class="flex-1 bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm"/><button class="shrink-0 bg-rose-400 text-white rounded-xl px-4 text-sm">＋</button></div>
+        </div>
+        <ul class="space-y-1.5 text-sm">
+          <li class="flex items-center gap-2 bg-pink-50 rounded-xl p-2.5"><span class="w-6 h-6 rounded-full border-2 border-pink-200 shrink-0"></span><div class="flex-1 min-w-0"><div class="font-medium">白色戀人 巧克力</div><div class="text-xs text-rose-400">機場/唐吉訶德</div></div><button class="text-sky-400 w-9 h-9 grid place-items-center" aria-label="地圖">📍</button></li>
+          <li class="flex items-center gap-2 bg-pink-50 rounded-xl p-2.5"><span class="w-6 h-6 rounded-full border-2 border-pink-200 shrink-0"></span><div class="flex-1 min-w-0"><div class="font-medium">藥妝 伴手禮</div><div class="text-xs text-rose-400">天神</div></div><button class="text-sky-400 w-9 h-9 grid place-items-center" aria-label="地圖">📍</button></li>
+        </ul>
+      </div>
+
+      <!-- 行前打包清單 (F-31，新增) -->
+      <div class="bg-white/80 rounded-2xl border border-pink-100 shadow-sm p-4">
+        <div class="flex items-center gap-2 mb-3"><span class="font-bold text-rose-500 flex-1">🧳 行前打包清單</span><span class="text-xs text-rose-300">3/8</span></div>
+        <button id="loadTpl" class="w-full mb-3 text-sm text-purple-500 border border-purple-200 rounded-xl py-2">⬇ 帶入範本</button>
+        <ul class="space-y-1.5 text-sm">
+          <li class="flex items-center gap-2 bg-pink-50 rounded-xl p-2.5"><span class="w-6 h-6 rounded-full bg-rose-400 text-white grid place-items-center text-xs">✓</span><span class="line-through text-rose-300 flex-1">護照</span></li>
+          <li class="flex items-center gap-2 bg-pink-50 rounded-xl p-2.5"><span class="w-6 h-6 rounded-full bg-rose-400 text-white grid place-items-center text-xs">✓</span><span class="line-through text-rose-300 flex-1">手機充電器</span></li>
+          <li class="flex items-center gap-2 bg-pink-50 rounded-xl p-2.5"><span class="w-6 h-6 rounded-full border-2 border-pink-200"></span><span class="flex-1">萬國變壓器</span></li>
+          <li class="flex items-center gap-2 bg-pink-50 rounded-xl p-2.5"><span class="w-6 h-6 rounded-full border-2 border-pink-200"></span><span class="flex-1">常備藥</span></li>
+          <li class="flex items-center gap-2 bg-pink-50 rounded-xl p-2.5"><span class="w-6 h-6 rounded-full border-2 border-pink-200"></span><span class="flex-1">雨具</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============ P-05 設定 ============ -->
+    <section data-tab="setting" class="hidden space-y-4">
+      <div class="bg-white/80 rounded-2xl border border-pink-100 shadow-sm p-4">
+        <div class="font-bold text-rose-500 mb-2">旅程設定</div>
+        <label class="text-xs text-rose-400">總預算（JPY）🆕</label>
+        <input value="120000" type="number" class="w-full bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm mt-1 mb-3"/>
+        <label class="text-xs text-rose-400">匯率 (1 ¥ = ? NT$)</label>
+        <div class="flex gap-2 mt-1">
+          <input value="0.21" class="flex-1 bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm"/>
+          <button id="rateBtn" class="shrink-0 bg-purple-400 text-white rounded-xl px-3 py-2 text-sm">🪄 查即時匯率</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 底部 nav (C-05) -->
+  <nav class="fixed bottom-0 inset-x-0 z-20 bg-white/90 backdrop-blur border-t border-pink-100">
+    <div class="max-w-2xl mx-auto grid grid-cols-5">
+      <button data-go="trip" class="navbtn flex flex-col items-center gap-0.5 py-2.5 text-rose-500"><span>📅</span><span class="text-[11px]">行程</span></button>
+      <button data-go="money" class="navbtn flex flex-col items-center gap-0.5 py-2.5 text-rose-300"><span>💰</span><span class="text-[11px]">帳本</span></button>
+      <button data-go="lists" class="navbtn flex flex-col items-center gap-0.5 py-2.5 text-rose-300"><span>✅</span><span class="text-[11px]">清單</span></button>
+      <button data-go="album" class="navbtn flex flex-col items-center gap-0.5 py-2.5 text-rose-300"><span>🖼</span><span class="text-[11px]">相簿</span></button>
+      <button data-go="setting" class="navbtn flex flex-col items-center gap-0.5 py-2.5 text-rose-300"><span>⚙️</span><span class="text-[11px]">設定</span></button>
+    </div>
+  </nav>
+
+  <!-- 控制列（原型示範用，非正式 UI） -->
+  <div class="fixed top-16 right-2 z-30 flex flex-col gap-1">
+    <button id="simOffline" class="text-[10px] bg-white/90 border border-pink-200 rounded px-2 py-1 shadow">模擬離線</button>
+    <button id="simRemote" class="text-[10px] bg-white/90 border border-pink-200 rounded px-2 py-1 shadow">模擬旅伴更新</button>
+  </div>
+
+  <!-- ConfirmSheet (C-16) -->
+  <div id="confirm" class="hidden fixed inset-0 z-40">
+    <div class="absolute inset-0 bg-black/30"></div>
+    <div class="sheet absolute bottom-0 inset-x-0 bg-white rounded-t-3xl p-5 max-w-2xl mx-auto">
+      <div class="text-center font-medium mb-1">確定刪除這個項目？</div>
+      <div class="text-center text-xs text-rose-400 mb-4">刪除後旅伴端也會一併移除，無法復原</div>
+      <div class="flex gap-2">
+        <button id="cCancel" class="flex-1 border border-pink-200 text-rose-400 rounded-xl py-2.5">取消</button>
+        <button id="cOk" class="flex-1 bg-rose-500 text-white rounded-xl py-2.5">刪除</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // 分頁切換
+  const navs=[...document.querySelectorAll('.navbtn')], secs=[...document.querySelectorAll('[data-tab]')];
+  navs.forEach(b=>b.onclick=()=>{ const t=b.dataset.go;
+    secs.forEach(s=>s.classList.toggle('hidden', s.dataset.tab!==t));
+    navs.forEach(n=>n.className=n.className.replace(/text-rose-\d00/,'text-rose-300'));
+    b.className=b.className.replace('text-rose-300','text-rose-500');
+  });
+
+  // 分類 pills 單選
+  document.querySelectorAll('#catPills .cat').forEach(p=>p.onclick=()=>{
+    document.querySelectorAll('#catPills .cat').forEach(x=>x.className='cat text-xs rounded-full px-3 py-1.5 bg-white text-rose-300 border border-dashed border-rose-200');
+    p.className='cat text-xs rounded-full px-3 py-1.5 bg-rose-500 text-white';
+  });
+
+  // 拖曳排序（HTML5 DnD 示範）
+  const list=document.getElementById('dayItems'); let dragEl=null;
+  list.querySelectorAll('li').forEach(li=>{
+    li.addEventListener('dragstart',e=>{ dragEl=li; li.classList.add('drag-ghost'); });
+    li.addEventListener('dragend',()=>{ li.classList.remove('drag-ghost'); dragEl=null; });
+    li.addEventListener('dragover',e=>{ e.preventDefault();
+      const after=(e.clientY < li.getBoundingClientRect().top+li.offsetHeight/2);
+      list.insertBefore(dragEl, after?li:li.nextSibling);
+    });
+  });
+
+  // 刪除確認
+  let pending=null;
+  document.querySelectorAll('.del').forEach(b=>b.onclick=()=>{ pending=b.closest('li'); show('confirm'); });
+  cCancel.onclick=()=>hide('confirm');
+  cOk.onclick=()=>{ if(pending) pending.remove(); hide('confirm'); };
+  function show(id){ const el=document.getElementById(id); el.classList.remove('hidden'); }
+  function hide(id){ document.getElementById(id).classList.add('hidden'); }
+
+  // 同步徽章狀態切換
+  const badge=syncBadge, txt=syncTxt;
+  function setSync(state){
+    const map={
+      synced:['bg-emerald-50 text-emerald-600','bg-emerald-400','已同步'],
+      syncing:['bg-amber-50 text-amber-600 pulse','bg-amber-400','同步中…'],
+      offline:['bg-amber-50 text-amber-600','bg-amber-400','離線·2'],
+      failed:['bg-rose-50 text-rose-600','bg-rose-500','失敗·重試'],
+    }[state];
+    badge.className='text-[11px] rounded-full px-2 py-1 flex items-center gap-1 '+map[0];
+    badge.firstElementChild.className='w-2 h-2 rounded-full '+map[1];
+    txt.textContent=map[2];
+  }
+  let off=false;
+  simOffline.onclick=()=>{ off=!off; offBanner.classList.toggle('hidden',!off);
+    if(off) setSync('offline'); else { setSync('syncing'); setTimeout(()=>setSync('synced'),1200); }
+    simOffline.textContent=off?'恢復連線':'模擬離線';
+  };
+
+  // 模擬旅伴更新某項目 → 高亮
+  simRemote.onclick=()=>{ const li=list.children[1];
+    li.querySelector('.text-sm').textContent='金鱗湖（旅伴改：建議清晨去）';
+    li.classList.add('remote-hl'); setTimeout(()=>li.classList.remove('remote-hl'),3000);
+  };
+
+  // 即時匯率
+  rateBtn.onclick=()=>{ rateBtn.textContent='查詢中…';
+    setTimeout(()=>{ rateBtn.textContent='✓ 已套用 0.213'; },900); };
+
+  // 打包範本
+  loadTpl.onclick=()=> alert('（原型示範）已帶入範本：護照／錢包／充電器／變壓器／常備藥／雨具／換洗衣物／盥洗用品');
+</script>
+</body>
+</html>

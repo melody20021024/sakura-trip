@@ -1,3 +1,7 @@
+// Model is configurable via env so it can be bumped without a code change.
+// Defaults to a current Claude Sonnet that supports the web_search tool.
+const FLIGHT_MODEL = process.env.FLIGHT_MODEL || "claude-sonnet-4-6";
+
 export default async function handler(req, res) {
   const { no, date } = req.query;
   if (!no || !date) return res.status(400).json({ error: "missing params" });
@@ -12,7 +16,7 @@ export default async function handler(req, res) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: FLIGHT_MODEL,
         max_tokens: 1000,
         messages: [
           {
