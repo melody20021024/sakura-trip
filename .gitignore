@@ -15,6 +15,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# vite temp
+vite.config.js.timestamp-*.mjs
+
 # editor / OS
 .vscode/*
 !.vscode/extensions.json
