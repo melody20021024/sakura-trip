@@ -155,9 +155,22 @@ describe("migrate (v1 -> v2)", () => {
   it("backs up the raw v1 blob", () => {
     expect(migrate(v1)._v1backup.tripName).toBe("九州之旅");
   });
-  it("is idempotent: migrating a v2 doc returns it unchanged", () => {
+  it("is idempotent: migrating a current-version doc returns it unchanged", () => {
     const once = migrate(v1);
     expect(migrate(once)).toBe(once);
+  });
+  it("re-normalizes early-v2 data (string city/lodging) to scalars on v2->v3", () => {
+    const earlyV2 = {
+      schemaVersion: 2,
+      tripName: { v: "x", updatedAt: 1 },
+      days: [{ id: "d1", date: "x", city: "福岡", lodging: "博多", updatedAt: 1, items: [] }],
+      _v1backup: { old: true },
+    };
+    const m = migrate(earlyV2);
+    expect(m.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(m.days[0].city).toEqual({ v: "福岡", updatedAt: 0 });
+    expect(m.days[0].lodging.v).toBe("博多");
+    expect(m._v1backup).toEqual({ old: true }); // preserved, not re-snapshotted
   });
   it("migrated data merges cleanly with itself", () => {
     const m = migrate(v1);

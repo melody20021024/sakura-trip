@@ -3,7 +3,9 @@
 // { id, updatedAt, _deleted? } so the sync layer can merge field-by-field.
 // See 03-DesignDocs/backend/sync-and-apis.md §4.2.
 
-export const SCHEMA_VERSION = 2;
+// v3: day city/lodging became mergeable scalars (was plain strings in the first
+// v2 cut). Bumping the version so migrate() re-normalizes any early-v2 data.
+export const SCHEMA_VERSION = 3;
 
 export const uid = () => Math.random().toString(36).slice(2, 9);
 export const now = () => Date.now();

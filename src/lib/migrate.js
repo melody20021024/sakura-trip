@@ -11,14 +11,16 @@ const stamp = (x) => ({ updatedAt: 0, ...x });
 
 export function migrate(raw) {
   if (!raw || typeof raw !== "object") return null; // caller uses freshDefault()
-  if (raw.schemaVersion === SCHEMA_VERSION) return raw; // already v2, no-op
+  if (raw.schemaVersion === SCHEMA_VERSION) return raw; // current, no-op
 
-  const backup =
-    typeof structuredClone === "function"
-      ? structuredClone(raw)
-      : JSON.parse(JSON.stringify(raw));
+  // Back up only the original v1 blob (no schemaVersion). Early-v2 data carries
+  // its own _v1backup which we preserve; we don't re-snapshot on v2->v3.
+  const fromV1 = !raw.schemaVersion;
+  const backup = fromV1
+    ? (typeof structuredClone === "function" ? structuredClone(raw) : JSON.parse(JSON.stringify(raw)))
+    : raw._v1backup;
 
-  return {
+  const normalized = {
     schemaVersion: SCHEMA_VERSION,
     tripName: wrapScalar(raw.tripName, ""),
     startDate: wrapScalar(raw.startDate, ""),
@@ -38,6 +40,7 @@ export function migrate(raw) {
     shopping: (raw.shopping ?? []).map(stamp),
     packing: (raw.packing ?? []).map(stamp),
     albums: (raw.albums ?? []).map(stamp),
-    _v1backup: backup,
+    ...(backup ? { _v1backup: backup } : {}),
   };
+  return normalized;
 }
