@@ -73,7 +73,10 @@ export function useTrip() {
     try {
       const merged = await pushRemote(key, dataRef.current, clientId);
       remoteRef.current = merged;
-      applyRemote(merged); // adopt other clients' changes, keep focused field
+      // Re-merge against the CURRENT local data, not the snapshot we pushed:
+      // edits committed during the in-flight push live in dataRef.current and
+      // would otherwise be dropped when we adopt the push result.
+      applyRemote(mergeTrip(dataRef.current, merged));
       retries.current = 0;
       await markClean(key);
       pushedSeq.current = target;

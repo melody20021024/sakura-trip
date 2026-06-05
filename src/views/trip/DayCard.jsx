@@ -62,7 +62,7 @@ export function DayCard({ day, idx, trip, confirm }) {
               editId === i.id ? (
                 <ItemForm key={i.id} value={draft} onChange={setDraft} onSave={saveEdit} onCancel={() => { setEditId(null); setDraft(null); }} saveLabel="儲存" />
               ) : (
-                <ItemRow key={i.id} item={i} city={day.city} onEdit={startEdit} onDelete={delItem} />
+                <ItemRow key={i.id} item={i} city={day.city?.v} onEdit={startEdit} onDelete={delItem} />
               )
             )}
           </div>

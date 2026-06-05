@@ -116,6 +116,17 @@ describe("mergeTrip", () => {
     expect(ab.food[0].name).toBe(ba.food[0].name);
     expect(ab.food[0].name).toBe("new"); // updatedAt 3 > 1
   });
+  it("re-merge keeps an edit committed during an in-flight push — 高-NEW-1", () => {
+    // L1 = what we pushed; pushRemote returned merged(L1, cloud). Meanwhile the
+    // user committed item f2 locally (dataRef = L2). doPush must adopt
+    // mergeTrip(L2, pushResult), not pushResult alone.
+    const L1 = trip({ food: [{ id: "f1", name: "ramen", updatedAt: 1 }] });
+    const pushResult = trip({ food: [{ id: "f1", name: "ramen", updatedAt: 1 }, { id: "cloud", name: "from-cloud", updatedAt: 2 }] });
+    const L2 = trip({ food: [{ id: "f1", name: "ramen", updatedAt: 1 }, { id: "f2", name: "added-mid-push", updatedAt: 3 }] });
+    const adopted = mergeTrip(L2, pushResult);
+    expect(adopted.food.map((x) => x.id).sort()).toEqual(["cloud", "f1", "f2"]);
+  });
+
   it("two editors changing different items both survive", () => {
     const base = trip({ food: [{ id: "f1", name: "ramen", updatedAt: 1 }] });
     const editorA = { ...base, food: [{ id: "f1", name: "ramen", updatedAt: 1 }, { id: "f2", name: "sushi", updatedAt: 2 }] };

@@ -125,12 +125,21 @@ export function byteSize(data) {
   }
 }
 
+// List fields whose items must each carry a string id; mergeList drops id-less
+// items, so we reject up front rather than lose data silently.
+const LIST_FIELDS = ["flights", "days", "expenses", "food", "shopping", "packing", "albums"];
+
 // Returns { ok, reason }. Cheap structural sanity check before pushing.
 export function validateTrip(data) {
   if (!data || typeof data !== "object") return { ok: false, reason: "資料格式錯誤" };
   if (data.schemaVersion !== SCHEMA_VERSION) return { ok: false, reason: "資料版本不符" };
   if (!Array.isArray(data.travelers) || data.travelers.length === 0)
     return { ok: false, reason: "至少需要一位旅伴" };
+  for (const f of LIST_FIELDS) {
+    if (!Array.isArray(data[f])) return { ok: false, reason: `資料格式錯誤 (${f})` };
+    if (data[f].some((x) => !x || typeof x.id !== "string"))
+      return { ok: false, reason: `資料格式錯誤 (${f} 項目缺少 id)` };
+  }
   if (byteSize(data) > MAX_JSON_BYTES)
     return { ok: false, reason: "資料過大,請精簡(相簿改用連結)" };
   return { ok: true };
