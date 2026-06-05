@@ -11,15 +11,31 @@ import { SCHEMA_VERSION } from "./schema.js";
 
 const ts = (x) => (x && typeof x.updatedAt === "number" ? x.updatedAt : 0);
 
-// Deterministic tie-break when updatedAt is equal on both sides: pick the
-// larger JSON serialization. Independent of which side is "local", so every
-// client converges to the same value.
+// Stable serialization with sorted keys at every level, so two clients that
+// built the "same" object via different code paths (migrate vs. live mutator)
+// still compare identically. Plain JSON.stringify is key-order dependent.
+function stableStr(o) {
+  return JSON.stringify(o, (_k, v) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, v[k]]))
+      : v
+  );
+}
+
+// Deterministic tie-break when updatedAt is equal on both sides:
+//   1. a deletion (tombstone) wins, so a delete never "loses" to a stale edit
+//      at the same instant and can't diverge (one client deletes, other keeps);
+//   2. otherwise the stable-serialized larger value wins — identical on every
+//      client regardless of which side is "local".
 function pick(a, b) {
   if (a === undefined) return b;
   if (b === undefined) return a;
   if (ts(b) > ts(a)) return b;
   if (ts(a) > ts(b)) return a;
-  return JSON.stringify(b) > JSON.stringify(a) ? b : a;
+  const da = a._deleted ? 1 : 0;
+  const db = b._deleted ? 1 : 0;
+  if (db !== da) return db > da ? b : a;
+  return stableStr(b) > stableStr(a) ? b : a;
 }
 
 export const newer = pick;
@@ -49,8 +65,16 @@ export function mergeDays(a = [], b = []) {
     if (!cur) {
       byId.set(d.id, d);
     } else {
-      const win = pick(cur, d);
-      byId.set(d.id, { ...win, items: mergeList(cur.items, d.items) });
+      // base resolves date / _deleted / day-level updatedAt; city & lodging are
+      // mergeable scalars merged field-by-field so two people editing different
+      // fields of the same day don't clobber each other (was 高-1 data loss).
+      const base = pick(cur, d);
+      byId.set(d.id, {
+        ...base,
+        city: pick(cur.city, d.city),
+        lodging: pick(cur.lodging, d.lodging),
+        items: mergeList(cur.items, d.items),
+      });
     }
   }
   return [...byId.values()];

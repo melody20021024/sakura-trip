@@ -29,6 +29,8 @@ export function migrate(raw) {
     flights: (raw.flights ?? []).map(stamp),
     days: (raw.days ?? []).map((d) => ({
       ...stamp(d),
+      city: wrapScalar(d.city, ""),
+      lodging: wrapScalar(d.lodging, ""),
       items: (d.items ?? []).map((it, i) => ({ order: i, ...stamp(it) })),
     })),
     expenses: (raw.expenses ?? []).map((e) => ({ category: "other", ...stamp(e) })),

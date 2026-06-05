@@ -40,11 +40,13 @@ export const openMap = (q) =>
   );
 
 // --- v2 default trip (sample九州・沖繩 itinerary, in mergeable shape) ---
+// city/lodging are mergeable scalars so concurrent edits to the same day merge
+// field-by-field (see merge.js mergeDays).
 const sampleDay = (date, city, lodging, items) => ({
   id: uid(),
   date,
-  city,
-  lodging,
+  city: scalar(city),
+  lodging: scalar(lodging),
   updatedAt: 0,
   items: items.map((it, i) => ({ id: uid(), order: i, time: "", note: "", updatedAt: 0, ...it })),
 });

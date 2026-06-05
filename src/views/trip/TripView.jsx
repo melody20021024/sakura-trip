@@ -1,7 +1,7 @@
 import { Calendar } from "lucide-react";
 import { Card, SectionTitle, Field, PinkBtn } from "../../components/ui.jsx";
 import { liveItems } from "../../lib/merge.js";
-import { uid, now } from "../../lib/schema.js";
+import { uid, now, scalar } from "../../lib/schema.js";
 import { FlightCard } from "./FlightCard.jsx";
 import { DayCard } from "./DayCard.jsx";
 
@@ -19,7 +19,7 @@ export function TripView({ trip, confirm }) {
     const next = [];
     for (let t = s.getTime(); t <= e.getTime(); t += 86400000) {
       const ds = new Date(t).toISOString().slice(0, 10);
-      if (!have.has(ds)) next.push({ id: uid(), date: ds, city: "", lodging: "", items: [], updatedAt: now() });
+      if (!have.has(ds)) next.push({ id: uid(), date: ds, city: scalar("", now()), lodging: scalar("", now()), items: [], updatedAt: now() });
     }
     if (next.length) trip.addDays(next);
   };

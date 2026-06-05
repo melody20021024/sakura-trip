@@ -45,11 +45,13 @@ export function DayCard({ day, idx, trip, confirm }) {
         <button onClick={delDay} aria-label="刪除這天" className="text-rose-300 hover:text-rose-500 w-9 h-9 grid place-items-center -my-1"><Trash2 size={15} /></button>
       </div>
       <div className="grid grid-cols-2 gap-2 mb-2">
-        <input value={day.city} onChange={(e) => trip.updateDay(day.id, { city: e.target.value })} placeholder="城市/區域"
+        <input value={day.city?.v || ""} onChange={(e) => trip.setDayField(day.id, "city", e.target.value)} placeholder="城市/區域"
+          onFocus={() => trip.focusField(`day:${day.id}:city`)} onBlur={trip.blurField}
           className="bg-pink-50 border border-pink-100 rounded-lg px-2 py-1.5 text-xs text-rose-700 placeholder-rose-300 focus:outline-none" />
         <div className="flex items-center gap-1 bg-pink-50 border border-pink-100 rounded-lg px-2">
           <BedDouble size={13} className="text-rose-300 shrink-0" />
-          <input value={day.lodging} onChange={(e) => trip.updateDay(day.id, { lodging: e.target.value })} placeholder="今晚住宿"
+          <input value={day.lodging?.v || ""} onChange={(e) => trip.setDayField(day.id, "lodging", e.target.value)} placeholder="今晚住宿"
+            onFocus={() => trip.focusField(`day:${day.id}:lodging`)} onBlur={trip.blurField}
             className="bg-transparent py-1.5 text-xs text-rose-700 placeholder-rose-300 focus:outline-none w-full" />
         </div>
       </div>

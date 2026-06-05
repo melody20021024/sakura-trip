@@ -23,7 +23,16 @@ export function useTrip() {
   const dataRef = useRef(null);
   const remoteRef = useRef(null); // last known cloud copy, for merge-on-push
   const timer = useRef(null);
+  const retryTimer = useRef(null);
   const retries = useRef(0);
+  const pushing = useRef(false); // single-flight guard
+  const pushAgain = useRef(false); // a commit arrived mid-push
+  const activeField = useRef(null); // field key currently being edited (F-05)
+  const seq = useRef(0); // monotonic commit counter
+  const pushedSeq = useRef(0); // last seq confirmed pushed
+
+  const focusField = useCallback((keyName) => { activeField.current = keyName; }, []);
+  const blurField = useCallback(() => { activeField.current = null; }, []);
 
   const apply = (next) => {
     dataRef.current = next;
@@ -144,6 +153,10 @@ export function useTrip() {
     deleteFlight: (id) => listDelete("flights", id),
     // days
     addDays: (newDays) => commit({ ...d(), days: [...d().days, ...newDays] }),
+    // city/lodging are mergeable scalars, each with its own updatedAt, so two
+    // editors can change different fields of the same day without clobbering.
+    setDayField: (id, field, value) =>
+      commit({ ...d(), days: d().days.map((x) => (x.id === id ? { ...x, [field]: { v: value, updatedAt: now() } } : x)) }),
     updateDay: (id, patch) => commit({ ...d(), days: d().days.map((x) => (x.id === id ? { ...x, ...patch, updatedAt: now() } : x)) }),
     deleteDay: (id) => commit({ ...d(), days: d().days.map((x) => (x.id === id ? { ...x, _deleted: true, updatedAt: now() } : x)) }),
     // day items (nested)
@@ -179,5 +192,5 @@ export function useTrip() {
     deleteAlbum: (id) => listDelete("albums", id),
   };
 
-  return { key, clientId, lsAvailable, data, syncState, pending, retry, ...mutators };
+  return { key, clientId, lsAvailable, data, syncState, pending, retry, focusField, blurField, ...mutators };
 }

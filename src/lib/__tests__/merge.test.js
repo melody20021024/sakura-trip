@@ -63,6 +63,40 @@ describe("mergeDays (nested items)", () => {
     expect(out).toHaveLength(1);
     expect(out[0].items).toHaveLength(2);
   });
+
+  it("同天兩人改不同欄位 (city vs lodging) 都保留 — 高-1 regression", () => {
+    const base = { id: "d1", date: "2026-06-10", city: scalar("", 0), lodging: scalar("", 0), updatedAt: 0, items: [] };
+    const editorA = [{ ...base, city: scalar("福岡", 5) }];
+    const editorB = [{ ...base, lodging: scalar("博多旅館", 6) }];
+    const ab = mergeDays(editorA, editorB);
+    const ba = mergeDays(editorB, editorA);
+    expect(ab[0].city.v).toBe("福岡");
+    expect(ab[0].lodging.v).toBe("博多旅館");
+    expect(ba[0].city.v).toBe("福岡"); // order-independent
+    expect(ba[0].lodging.v).toBe("博多旅館");
+  });
+
+  it("離線回線:本地與遠端各自新增同天項目都保留 — 高-3 merge regression", () => {
+    const day = (items) => ({ id: "d1", date: "x", city: scalar("", 0), lodging: scalar("", 0), updatedAt: 1, items });
+    const local = [day([{ id: "i1", title: "a", updatedAt: 1 }, { id: "i2", title: "local-offline", updatedAt: 2 }])];
+    const remote = [day([{ id: "i1", title: "a", updatedAt: 1 }, { id: "i3", title: "remote", updatedAt: 2 }])];
+    const out = mergeDays(local, remote);
+    expect(out[0].items.map((i) => i.id).sort()).toEqual(["i1", "i2", "i3"]);
+  });
+});
+
+describe("pick tie-break (equal updatedAt) — 中-1", () => {
+  it("tombstone wins a tie, order-independent", () => {
+    const edit = [{ id: "1", title: "t", updatedAt: 5 }];
+    const del = [{ id: "1", _deleted: true, updatedAt: 5 }];
+    expect(liveItems(mergeList(edit, del))).toHaveLength(0);
+    expect(liveItems(mergeList(del, edit))).toHaveLength(0);
+  });
+  it("non-deleted tie converges regardless of key construction order", () => {
+    const a = [{ id: "1", title: "apple", note: "x", updatedAt: 5 }];
+    const b = [{ id: "1", note: "x", title: "banana", updatedAt: 5 }];
+    expect(mergeList(a, b)[0].title).toBe(mergeList(b, a)[0].title);
+  });
 });
 
 describe("mergeTrip", () => {
@@ -110,6 +144,8 @@ describe("migrate (v1 -> v2)", () => {
     expect(m.schemaVersion).toBe(SCHEMA_VERSION);
     expect(m.tripName).toEqual({ v: "九州之旅", updatedAt: 0 });
     expect(m.days[0].updatedAt).toBe(0);
+    expect(m.days[0].city).toEqual({ v: "福岡", updatedAt: 0 });
+    expect(m.days[0].lodging).toEqual({ v: "博多", updatedAt: 0 });
     expect(m.days[0].items[0].order).toBe(0);
     expect(m.days[0].items[1].order).toBe(1);
     expect(m.expenses[0].category).toBe("other");
