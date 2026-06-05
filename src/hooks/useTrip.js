@@ -39,24 +39,57 @@ export function useTrip() {
     setData(next);
   };
 
-  // ---- push pipeline (debounced) ----
+  // Adopt a merged-with-remote snapshot, but keep the value of the field the
+  // user is currently editing (F-05) so an incoming remote change can't
+  // overwrite an in-progress edit. Field key is either a scalar name
+  // ("tripName") or "day:<id>:<field>".
+  const applyRemote = (merged) => {
+    const f = activeField.current;
+    let next = merged;
+    if (f && dataRef.current) {
+      const local = dataRef.current;
+      if (f.startsWith("day:")) {
+        const [, id, field] = f.split(":");
+        next = { ...merged, days: merged.days.map((day) => {
+          if (day.id !== id) return day;
+          const localDay = local.days.find((x) => x.id === id);
+          return localDay ? { ...day, [field]: localDay[field] } : day;
+        }) };
+      } else if (f in merged && f in local) {
+        next = { ...merged, [f]: local[f] };
+      }
+    }
+    apply(next);
+    saveTrip(key, next, { dirty: false });
+  };
+
+  // ---- push pipeline: read-merge-write, single-flight ----
   const doPush = useCallback(async () => {
     if (!navigator.onLine) { setSyncState("offline"); return; }
-    const merged = mergeTrip(dataRef.current, remoteRef.current);
+    if (pushing.current) { pushAgain.current = true; return; } // single-flight
+    pushing.current = true;
     setSyncState("syncing");
+    const target = seq.current;
     try {
-      await pushRemote(key, merged, clientId);
+      const merged = await pushRemote(key, dataRef.current, clientId);
       remoteRef.current = merged;
+      applyRemote(merged); // adopt other clients' changes, keep focused field
       retries.current = 0;
       await markClean(key);
-      setPending(0);
+      pushedSeq.current = target;
+      setPending(Math.max(0, seq.current - target));
       setSyncState("synced");
+      pushing.current = false;
+      // commits that arrived while we were pushing -> push again
+      if (pushAgain.current || seq.current > target) { pushAgain.current = false; doPush(); }
     } catch (e) {
+      pushing.current = false;
       if (retries.current < MAX_RETRY && navigator.onLine) {
         retries.current += 1;
         const wait = 1000 * 2 ** (retries.current - 1);
         setSyncState("syncing");
-        setTimeout(doPush, wait);
+        if (retryTimer.current) clearTimeout(retryTimer.current);
+        retryTimer.current = setTimeout(doPush, wait);
       } else {
         setSyncState(navigator.onLine ? "failed" : "offline");
       }
@@ -64,13 +97,14 @@ export function useTrip() {
   }, [key, clientId]);
 
   const schedulePush = useCallback(() => {
-    setPending((n) => n + 1);
+    setPending(Math.max(0, seq.current - pushedSeq.current));
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(doPush, PUSH_DEBOUNCE);
   }, [doPush]);
 
   // commit local edit: render now, persist locally, queue a push
   const commit = useCallback((next) => {
+    seq.current += 1;
     apply(next);
     saveTrip(key, next, { dirty: true });
     schedulePush();
@@ -109,10 +143,15 @@ export function useTrip() {
     return subscribeRemote(key, clientId, (remote) => {
       remoteRef.current = remote;
       const merged = mergeTrip(dataRef.current, remote);
-      apply(merged);
-      saveTrip(key, merged, { dirty: false });
+      applyRemote(merged); // keep the field the user is editing (F-05)
     });
   }, [key, clientId]);
+
+  // ---- clear pending timers on unmount ----
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+  }, []);
 
   // ---- offline / online transitions ----
   useEffect(() => {

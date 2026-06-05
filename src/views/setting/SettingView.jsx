@@ -56,11 +56,13 @@ export function SettingView({ trip }) {
         </div>
 
         <label className="text-xs text-rose-400 block mt-4">總預算 (日幣,0 = 不設)</label>
-        <Field type="number" value={data.budgetJPY?.v ?? 0} onChange={(e) => trip.setField("budgetJPY", parseFloat(e.target.value) || 0)} className="mt-1" />
+        <Field type="number" value={data.budgetJPY?.v ?? 0} onChange={(e) => trip.setField("budgetJPY", parseFloat(e.target.value) || 0)}
+          onFocus={() => trip.focusField("budgetJPY")} onBlur={trip.blurField} className="mt-1" />
 
         <label className="text-xs text-rose-400 block mt-4">匯率 (1 ¥ = ? NT$)</label>
         <div className="flex gap-2 mt-1">
-          <Field type="number" step="0.001" value={data.rate.v} onChange={(e) => trip.setField("rate", parseFloat(e.target.value) || 0)} />
+          <Field type="number" step="0.001" value={data.rate.v} onChange={(e) => trip.setField("rate", parseFloat(e.target.value) || 0)}
+            onFocus={() => trip.focusField("rate")} onBlur={trip.blurField} />
           <button onClick={fetchRate} disabled={rateLoading} className="shrink-0 bg-purple-400 hover:bg-purple-500 text-white rounded-xl px-3 py-2 text-sm font-medium flex items-center gap-1">
             {rateLoading ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />} 查即時匯率
           </button>
