@@ -11,6 +11,11 @@ export default defineConfig({
       manifest: {
         name: "櫻旅 — 日本旅遊",
         short_name: "櫻旅",
+        // start_url has no ?trip param on purpose; the app restores the last
+        // trip from localStorage (F-01), so launching from the home screen no
+        // longer mints a fresh empty trip the way v1 did.
+        id: "/",
+        start_url: "/",
         theme_color: "#fb7185",
         background_color: "#fff1f2",
         display: "standalone",
