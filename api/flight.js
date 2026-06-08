@@ -24,7 +24,7 @@ export default async function handler(req, res) {
             content: `查詢航班 ${no} 在 ${date} 的定期時刻表。只回傳 JSON,不要任何其他文字,格式:{"from":"出發機場IATA","to":"抵達機場IATA","depTime":"HH:MM","arrTime":"HH:MM"}。查不到的欄位留空字串。`,
           },
         ],
-        tools: [{ type: "web_search_20250305", name: "web_search" }],
+        tools: [{ type: "web_search_20260209", name: "web_search" }],
       }),
     });
     const j = await r.json();
