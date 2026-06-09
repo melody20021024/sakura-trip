@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { resolveTripKey } from "../lib/tripKey.js";
 import { loadTrip, saveTrip, markClean } from "../lib/db.js";
 import { pullRemote, pushRemote, subscribeRemote } from "../lib/sync.js";
-import { mergeTrip, collapseDaysByDate } from "../lib/merge.js";
+import { mergeTrip, normalizeTrip } from "../lib/merge.js";
 import { migrate } from "../lib/migrate.js";
 import { freshDefault, uid, now } from "../lib/schema.js";
 
@@ -128,8 +128,8 @@ export function useTrip() {
           // IMPORTANT: never merge the freshDefault sample into an existing
           // cloud trip — that injected duplicate sample days/items every fresh
           // session. Only merge when there are genuine local edits.
-          base = localTrip ? mergeTrip(localTrip, remote) : remote;
-          base = { ...base, days: collapseDaysByDate(base.days) }; // heal any same-date dupes
+          base = localTrip ? mergeTrip(localTrip, remote) : normalizeTrip(remote);
+          // heal duplicate days/flights/checklist items from earlier sessions
           if (alive) apply(base);
           await saveTrip(key, base, { dirty: false });
         } else {
