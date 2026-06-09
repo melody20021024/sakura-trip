@@ -1,10 +1,9 @@
 name: Deploy to GitHub Pages
 
 # Builds the Vite app and publishes dist/ to GitHub Pages on every push to main
-# (or manually via the Actions tab). Supabase config is injected at build time
-# from repo secrets — set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY under
-# Settings → Secrets and variables → Actions. The anon key is public by design
-# (it ships in the client bundle); row-level security guards the data.
+# (or manually via the Actions tab). Supabase config is read from .env.production
+# (public client values; the anon key ships in the bundle by design and is
+# guarded by row-level security), so no repo secrets are required.
 on:
   push:
     branches: [main]
@@ -30,10 +29,9 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Supabase config comes from .env.production (public client values), which
+      # Vite auto-loads in production mode — no repo secrets needed.
       - run: npm run build
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       - uses: actions/configure-pages@v5
         with:
           enablement: true
