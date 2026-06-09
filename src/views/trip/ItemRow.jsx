@@ -2,7 +2,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Map as MapIcon, Pencil, X } from "lucide-react";
 import { DragHandle } from "../../components/DragHandle.jsx";
-import { openMap } from "../../lib/schema.js";
+import { openMap, openUrl } from "../../lib/schema.js";
 import { typeOf, MAPPABLE } from "./constants.js";
 
 // C-08: one sortable itinerary item. Drag via the handle only (so taps on the
@@ -34,8 +34,9 @@ export function ItemRow({ item, city, onEdit, onDelete }) {
         {item.note && <div className="text-xs text-rose-400 break-words">{item.note}</div>}
       </div>
       <div className="flex items-center shrink-0 -my-1">
-        {MAPPABLE.has(item.type) && (
-          <button onClick={() => openMap(item.title + " " + (city || ""))} aria-label="地圖"
+        {(MAPPABLE.has(item.type) || item.mapUrl) && (
+          <button onClick={() => (item.mapUrl ? openUrl(item.mapUrl) : openMap(item.title + " " + (city || "")))}
+            aria-label="地圖" title={item.mapUrl ? "開啟地圖連結" : "在 Google 地圖搜尋"}
             className="text-sky-400 hover:text-sky-600 w-8 h-9 grid place-items-center"><MapIcon size={15} /></button>
         )}
         <button onClick={() => onEdit(item.id)} aria-label="編輯"

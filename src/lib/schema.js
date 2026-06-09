@@ -40,6 +40,12 @@ export const openMap = (q) =>
     "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q),
     "_blank"
   );
+// Normalise a user-pasted URL (add https:// if missing) and open it.
+export const normalizeUrl = (u) => {
+  const s = (u || "").trim();
+  return /^https?:\/\//i.test(s) ? s : "https://" + s;
+};
+export const openUrl = (u) => window.open(normalizeUrl(u), "_blank");
 
 // --- v2 default trip (sample九州・沖繩 itinerary, in mergeable shape) ---
 // city/lodging are mergeable scalars so concurrent edits to the same day merge
