@@ -27,7 +27,9 @@ export function migrate(raw) {
     endDate: wrapScalar(raw.endDate, ""),
     rate: wrapScalar(raw.rate, 0.21),
     budgetJPY: wrapScalar(raw.budgetJPY, 0),
-    travelers: Array.isArray(raw.travelers) && raw.travelers.length ? raw.travelers : [...DEFAULT_TRAVELERS],
+    travelers: (raw.travelers && typeof raw.travelers === "object" && "v" in raw.travelers)
+      ? raw.travelers // already a scalar (v4+)
+      : scalar(Array.isArray(raw.travelers) && raw.travelers.length ? raw.travelers : [...DEFAULT_TRAVELERS]),
     flights: (raw.flights ?? []).map(stamp),
     days: (raw.days ?? []).map((d) => ({
       ...stamp(d),

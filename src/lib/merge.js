@@ -173,7 +173,7 @@ export function mergeTrip(local, remote) {
     endDate: pick(local.endDate, remote.endDate),
     rate: pick(local.rate, remote.rate),
     budgetJPY: pick(local.budgetJPY, remote.budgetJPY),
-    travelers: union(local.travelers, remote.travelers),
+    travelers: pick(local.travelers, remote.travelers), // LWW so removals stick (v4)
     flights: mergeList(local.flights, remote.flights),
     days: mergeDays(local.days, remote.days),
     expenses: mergeList(local.expenses, remote.expenses),

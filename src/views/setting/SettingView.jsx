@@ -6,6 +6,7 @@ import { lookupRate } from "../../lib/api.js";
 // P-05. Share link, trip settings (name / budget / rate + live lookup), travelers.
 export function SettingView({ trip }) {
   const { data } = trip;
+  const travelers = data.travelers.v || [];
   const [name, setName] = useState(data.tripName.v);
   const [newT, setNewT] = useState("");
   const [copied, setCopied] = useState(false);
@@ -14,13 +15,13 @@ export function SettingView({ trip }) {
 
   const addT = () => {
     const n = newT.trim();
-    if (!n || data.travelers.includes(n)) return;
-    trip.setTravelers([...data.travelers, n]);
+    if (!n || travelers.includes(n)) return;
+    trip.setTravelers([...travelers, n]);
     setNewT("");
   };
   const delT = (n) => {
-    if (data.travelers.length <= 1) return;
-    trip.setTravelers(data.travelers.filter((t) => t !== n));
+    if (travelers.length <= 1) return;
+    trip.setTravelers(travelers.filter((t) => t !== n));
   };
   const copyLink = async () => {
     try { await navigator.clipboard.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {}
@@ -77,9 +78,9 @@ export function SettingView({ trip }) {
           <PinkBtn onClick={addT} className="shrink-0"><Plus size={16} /></PinkBtn>
         </div>
         <div className="flex flex-wrap gap-2">
-          {data.travelers.map((t) => (
+          {travelers.map((t) => (
             <span key={t} className="flex items-center gap-1 bg-pink-100 text-rose-600 rounded-full px-3 py-1 text-sm">
-              {t}{data.travelers.length > 1 && <button onClick={() => delT(t)} aria-label={`移除 ${t}`} className="text-rose-400 hover:text-rose-600"><X size={13} /></button>}
+              {t}{travelers.length > 1 && <button onClick={() => delT(t)} aria-label={`移除 ${t}`} className="text-rose-400 hover:text-rose-600"><X size={13} /></button>}
             </span>
           ))}
         </div>

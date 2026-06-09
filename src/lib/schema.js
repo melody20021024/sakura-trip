@@ -3,9 +3,11 @@
 // { id, updatedAt, _deleted? } so the sync layer can merge field-by-field.
 // See 03-DesignDocs/backend/sync-and-apis.md §4.2.
 
-// v3: day city/lodging became mergeable scalars (was plain strings in the first
-// v2 cut). Bumping the version so migrate() re-normalizes any early-v2 data.
-export const SCHEMA_VERSION = 3;
+// v3: day city/lodging became mergeable scalars.
+// v4: travelers became a last-write-wins scalar { v:[...], updatedAt } instead
+//     of a unioned array, so removing a traveller (e.g. the old 我) actually
+//     sticks instead of being merged back in.
+export const SCHEMA_VERSION = 4;
 
 export const uid = () => Math.random().toString(36).slice(2, 9);
 export const now = () => Date.now();
@@ -71,7 +73,7 @@ export const DEFAULT = {
   endDate: scalar("2026-06-16"),
   rate: scalar(0.21),
   budgetJPY: scalar(0),
-  travelers: [...DEFAULT_TRAVELERS],
+  travelers: scalar([...DEFAULT_TRAVELERS]),
   flights: [
     { id: uid(), label: "去程", flightNo: "", from: "TPE", to: "OIT", dep: "2026-06-10T00:00", arr: "", est: false, updatedAt: 0 },
     { id: uid(), label: "國內線", flightNo: "", from: "FUK", to: "OKA", dep: "2026-06-13T00:00", arr: "", est: false, updatedAt: 0 },
@@ -144,7 +146,7 @@ const LIST_FIELDS = ["flights", "days", "expenses", "food", "shopping", "packing
 export function validateTrip(data) {
   if (!data || typeof data !== "object") return { ok: false, reason: "資料格式錯誤" };
   if (data.schemaVersion !== SCHEMA_VERSION) return { ok: false, reason: "資料版本不符" };
-  if (!Array.isArray(data.travelers) || data.travelers.length === 0)
+  if (!data.travelers || !Array.isArray(data.travelers.v) || data.travelers.v.length === 0)
     return { ok: false, reason: "至少需要一位旅伴" };
   for (const f of LIST_FIELDS) {
     if (!Array.isArray(data[f])) return { ok: false, reason: `資料格式錯誤 (${f})` };
