@@ -4,6 +4,9 @@
 // set AERODATABOX_KEY in the environment (Vercel → Settings → Env Variables).
 // Returns { from, to, depTime, arrTime } (empty strings when unknown). Fails
 // soft so the user can always fill the flight in manually.
+//
+// Add ?debug=1 to surface the upstream HTTP status + a short body snippet for
+// diagnosis (no secrets are exposed).
 const BASE = "https://prod.api.market/api/v1/aedbx/aerodatabox";
 
 // scheduledTime.local looks like "2026-06-10 10:00+09:00" — pull out HH:MM.
@@ -16,7 +19,7 @@ const hhmm = (dt) => {
 const empty = { from: "", to: "", depTime: "", arrTime: "" };
 
 export default async function handler(req, res) {
-  const { no, date } = req.query;
+  const { no, date, debug } = req.query;
   if (!no || !date) return res.status(400).json({ error: "missing params" });
   if (!process.env.AERODATABOX_KEY)
     return res.status(200).json({ error: "no key" });
@@ -26,6 +29,17 @@ export default async function handler(req, res) {
     const r = await fetch(url, {
       headers: { "x-magicapi-key": process.env.AERODATABOX_KEY, accept: "application/json" },
     });
+
+    if (debug) {
+      const body = await r.text();
+      return res.status(200).json({
+        debug: true,
+        upstreamStatus: r.status,
+        upstreamBody: body.slice(0, 400),
+        keyLen: (process.env.AERODATABOX_KEY || "").length,
+      });
+    }
+
     // 204/404 = no scheduled flight for that number/date -> let user fill manually.
     if (r.status === 204 || r.status === 404) return res.status(200).json(empty);
     if (!r.ok) return res.status(200).json(empty);
@@ -41,6 +55,7 @@ export default async function handler(req, res) {
       arrTime: hhmm(f.arrival?.scheduledTime),
     });
   } catch (e) {
+    if (debug) return res.status(200).json({ debug: true, error: "exception", message: String(e && e.message) });
     res.status(500).json({ error: "lookup failed" });
   }
 }
