@@ -25,7 +25,7 @@ export function TripView({ trip, confirm }) {
     const next = [];
     for (const cur = new Date(s); cur <= e; cur.setDate(cur.getDate() + 1)) {
       const ds = fmtLocal(cur);
-      if (!have.has(ds)) next.push({ id: uid(), date: ds, city: scalar("", now()), lodging: scalar("", now()), items: [], updatedAt: now() });
+      if (!have.has(ds)) next.push({ id: uid(), date: ds, city: scalar("", now()), lodging: scalar("", now()), lodgingMap: scalar("", now()), items: [], updatedAt: now() });
     }
     if (next.length) trip.addDays(next);
   };

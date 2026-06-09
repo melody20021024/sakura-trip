@@ -73,6 +73,7 @@ export function mergeDays(a = [], b = []) {
         ...base,
         city: pick(cur.city, d.city),
         lodging: pick(cur.lodging, d.lodging),
+        lodgingMap: pick(cur.lodgingMap, d.lodgingMap),
         items: mergeList(cur.items, d.items),
       });
     }
@@ -101,10 +102,11 @@ export function collapseDaysByDate(days = []) {
     if (group.length === 1) { out.push(group[0]); continue; }
     group.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const base = group[0];
-    let city = base.city, lodging = base.lodging, items = [];
+    let city = base.city, lodging = base.lodging, lodgingMap = base.lodgingMap, items = [];
     for (const d of group) {
       city = pick(city, d.city);
       lodging = pick(lodging, d.lodging);
+      lodgingMap = pick(lodgingMap, d.lodgingMap);
       items = mergeList(items, d.items || []);
     }
     // de-dup unioned items by content (collapses identical sample copies);
@@ -115,7 +117,7 @@ export function collapseDaysByDate(days = []) {
       const prev = seen.get(k);
       seen.set(k, prev ? preferLive(prev, it) : it);
     }
-    out.push({ ...base, city, lodging, items: [...seen.values()] });
+    out.push({ ...base, city, lodging, lodgingMap, items: [...seen.values()] });
   }
   return out;
 }
