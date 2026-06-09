@@ -107,16 +107,27 @@ export function collapseDaysByDate(days = []) {
       lodging = pick(lodging, d.lodging);
       items = mergeList(items, d.items || []);
     }
-    // de-dup unioned items by content (collapses identical sample copies)
+    // de-dup unioned items by content (collapses identical sample copies);
+    // prefer live so a stale deletion of one copy doesn't drop the others
     const seen = new Map();
     for (const it of items) {
       const k = itemContentKey(it);
       const prev = seen.get(k);
-      seen.set(k, prev ? pick(prev, it) : it);
+      seen.set(k, prev ? preferLive(prev, it) : it);
     }
     out.push({ ...base, city, lodging, items: [...seen.values()] });
   }
   return out;
+}
+
+// When collapsing two entries of identical content, prefer the LIVE one — a
+// stale deletion of one duplicate must not nuke the others (that wiped the
+// sample flights). Only keep a tombstone if every copy of that content is
+// deleted.
+function preferLive(a, b) {
+  const ad = !!a._deleted, bd = !!b._deleted;
+  if (ad !== bd) return ad ? b : a;
+  return pick(a, b);
 }
 
 // De-dup a list by content (ignoring id/updatedAt) so identical sample copies
@@ -128,7 +139,7 @@ function dedupeByContent(list = [], keyFn) {
     if (!x) continue;
     const k = keyFn(x);
     const prev = seen.get(k);
-    seen.set(k, prev ? pick(prev, x) : x);
+    seen.set(k, prev ? preferLive(prev, x) : x);
   }
   return [...seen.values()];
 }
