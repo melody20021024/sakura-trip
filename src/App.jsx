@@ -38,7 +38,7 @@ export default function App() {
     <div className="min-h-screen bg-gradient-to-b from-pink-50 via-rose-50 to-pink-100 text-rose-900 pb-24">
       <Header
         tripName={trip.data.tripName.v}
-        travelerCount={trip.data.travelers.length}
+        travelerCount={(trip.data.travelers.v || []).length}
         syncState={trip.syncState}
         pending={trip.pending}
         onRetry={trip.retry}

@@ -11,7 +11,7 @@ import { ExpenseForm } from "./ExpenseForm.jsx";
 
 // P-02. Totals + budget + categories + settlement + detail.
 export function MoneyView({ trip, confirm }) {
-  const travelers = trip.data.travelers;
+  const travelers = trip.data.travelers.v || [];
   const rate = trip.data.rate.v || 0.21;
   const budgetJPY = trip.data.budgetJPY?.v || 0;
   const expenses = liveItems(trip.data.expenses);

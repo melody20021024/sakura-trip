@@ -11,15 +11,21 @@ export function TripView({ trip, confirm }) {
   const endDate = trip.data.endDate.v;
   const days = liveItems(trip.data.days).sort((a, b) => a.date.localeCompare(b.date));
 
+  // Format a Date as a LOCAL YYYY-MM-DD. Using toISOString() here was a bug:
+  // it converts to UTC, so in UTC+8 (TW/JP) every generated date shifted back
+  // by one day (e.g. 6/10 became 6/9).
+  const pad = (n) => String(n).padStart(2, "0");
+  const fmtLocal = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+
   const generateDays = () => {
     if (!startDate || !endDate) return;
     const s = new Date(startDate + "T00:00"), e = new Date(endDate + "T00:00");
     if (e < s) return;
     const have = new Set(days.map((d) => d.date));
     const next = [];
-    for (let t = s.getTime(); t <= e.getTime(); t += 86400000) {
-      const ds = new Date(t).toISOString().slice(0, 10);
-      if (!have.has(ds)) next.push({ id: uid(), date: ds, city: scalar("", now()), lodging: scalar("", now()), items: [], updatedAt: now() });
+    for (const cur = new Date(s); cur <= e; cur.setDate(cur.getDate() + 1)) {
+      const ds = fmtLocal(cur);
+      if (!have.has(ds)) next.push({ id: uid(), date: ds, city: scalar("", now()), lodging: scalar("", now()), lodgingMap: scalar("", now()), items: [], updatedAt: now() });
     }
     if (next.length) trip.addDays(next);
   };

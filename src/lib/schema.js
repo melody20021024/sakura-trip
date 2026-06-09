@@ -3,9 +3,11 @@
 // { id, updatedAt, _deleted? } so the sync layer can merge field-by-field.
 // See 03-DesignDocs/backend/sync-and-apis.md §4.2.
 
-// v3: day city/lodging became mergeable scalars (was plain strings in the first
-// v2 cut). Bumping the version so migrate() re-normalizes any early-v2 data.
-export const SCHEMA_VERSION = 3;
+// v3: day city/lodging became mergeable scalars.
+// v4: travelers became a last-write-wins scalar { v:[...], updatedAt } instead
+//     of a unioned array, so removing a traveller (e.g. the old 我) actually
+//     sticks instead of being merged back in.
+export const SCHEMA_VERSION = 4;
 
 export const uid = () => Math.random().toString(36).slice(2, 9);
 export const now = () => Date.now();
@@ -32,6 +34,10 @@ export const PACKING_TEMPLATE = [
   "萬國變壓器", "常備藥", "雨具", "換洗衣物", "盥洗用品",
 ];
 
+// Default travellers for a new trip. No "我" placeholder — with several people
+// opening the shared link, "我" is ambiguous, so we seed real names.
+export const DEFAULT_TRAVELERS = ["柔", "柔爸", "柔媽", "宣", "宣爸"];
+
 export const SYM = { JPY: "¥", TWD: "NT$" };
 export const money = (n, c = "JPY") =>
   (SYM[c] || "") + Math.round(Number(n || 0)).toLocaleString();
@@ -40,6 +46,12 @@ export const openMap = (q) =>
     "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q),
     "_blank"
   );
+// Normalise a user-pasted URL (add https:// if missing) and open it.
+export const normalizeUrl = (u) => {
+  const s = (u || "").trim();
+  return /^https?:\/\//i.test(s) ? s : "https://" + s;
+};
+export const openUrl = (u) => window.open(normalizeUrl(u), "_blank");
 
 // --- v2 default trip (sample九州・沖繩 itinerary, in mergeable shape) ---
 // city/lodging are mergeable scalars so concurrent edits to the same day merge
@@ -49,6 +61,7 @@ const sampleDay = (date, city, lodging, items) => ({
   date,
   city: scalar(city),
   lodging: scalar(lodging),
+  lodgingMap: scalar(""), // optional Google address / map URL for the lodging
   updatedAt: 0,
   items: items.map((it, i) => ({ id: uid(), order: i, time: "", note: "", updatedAt: 0, ...it })),
 });
@@ -60,7 +73,7 @@ export const DEFAULT = {
   endDate: scalar("2026-06-16"),
   rate: scalar(0.21),
   budgetJPY: scalar(0),
-  travelers: ["我"],
+  travelers: scalar([...DEFAULT_TRAVELERS]),
   flights: [
     { id: uid(), label: "去程", flightNo: "", from: "TPE", to: "OIT", dep: "2026-06-10T00:00", arr: "", est: false, updatedAt: 0 },
     { id: uid(), label: "國內線", flightNo: "", from: "FUK", to: "OKA", dep: "2026-06-13T00:00", arr: "", est: false, updatedAt: 0 },
@@ -133,7 +146,7 @@ const LIST_FIELDS = ["flights", "days", "expenses", "food", "shopping", "packing
 export function validateTrip(data) {
   if (!data || typeof data !== "object") return { ok: false, reason: "資料格式錯誤" };
   if (data.schemaVersion !== SCHEMA_VERSION) return { ok: false, reason: "資料版本不符" };
-  if (!Array.isArray(data.travelers) || data.travelers.length === 0)
+  if (!data.travelers || !Array.isArray(data.travelers.v) || data.travelers.v.length === 0)
     return { ok: false, reason: "至少需要一位旅伴" };
   for (const f of LIST_FIELDS) {
     if (!Array.isArray(data[f])) return { ok: false, reason: `資料格式錯誤 (${f})` };

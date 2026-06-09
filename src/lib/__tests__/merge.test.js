@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeTrip, mergeList, mergeDays, newer, liveItems } from "../merge.js";
+import { mergeTrip, mergeList, mergeDays, newer, liveItems, collapseDaysByDate, normalizeTrip } from "../merge.js";
 import { migrate } from "../migrate.js";
 import { scalar, SCHEMA_VERSION } from "../schema.js";
 
@@ -10,7 +10,7 @@ const trip = (over = {}) => ({
   endDate: scalar("2026-06-16", 0),
   rate: scalar(0.21, 0),
   budgetJPY: scalar(0, 0),
-  travelers: ["我"],
+  travelers: scalar(["我"]),
   flights: [],
   days: [],
   expenses: [],
@@ -85,6 +85,64 @@ describe("mergeDays (nested items)", () => {
   });
 });
 
+describe("collapseDaysByDate — 重複天數修復", () => {
+  const sampleDay = (id, date) => ({
+    id, date, city: scalar("", 0), lodging: scalar("", 0), updatedAt: 0,
+    items: [
+      { id: id + "-i1", time: "", type: "move", title: "抵達大分機場", note: "", updatedAt: 0 },
+      { id: id + "-i2", time: "", type: "spot", title: "金鱗湖", note: "", updatedAt: 0 },
+    ],
+  });
+
+  it("collapses three same-date sample days into one, de-duping items by content", () => {
+    const days = [sampleDay("b", "2026-06-10"), sampleDay("a", "2026-06-10"), sampleDay("c", "2026-06-10")];
+    const out = collapseDaysByDate(days);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe("a"); // smallest id survives (deterministic)
+    expect(out[0].items).toHaveLength(2); // 6 unioned -> 2 by content
+  });
+
+  it("keeps distinct dates and is order-independent", () => {
+    const days = [sampleDay("x", "2026-06-11"), sampleDay("a", "2026-06-10"), sampleDay("b", "2026-06-10")];
+    const out = collapseDaysByDate(days);
+    expect(out.map((d) => d.date).sort()).toEqual(["2026-06-10", "2026-06-11"]);
+  });
+
+  it("leaves a single day untouched", () => {
+    const d = sampleDay("a", "2026-06-10");
+    expect(collapseDaysByDate([d])[0]).toBe(d);
+  });
+});
+
+describe("normalizeTrip — 重複航班/清單修復", () => {
+  it("de-dups triplicated sample flights and food by content", () => {
+    const fl = (id) => ({ id, label: "去程", flightNo: "", from: "TPE", to: "OIT", dep: "2026-06-10T00:00", arr: "", updatedAt: 0 });
+    const food = (id) => ({ id, name: "一蘭拉麵", meta: "福岡", done: false, updatedAt: 0 });
+    const t = trip({
+      flights: [fl("a"), fl("b"), fl("c")],
+      food: [food("x"), food("y")],
+    });
+    const out = normalizeTrip(t);
+    expect(out.flights).toHaveLength(1);
+    expect(out.food).toHaveLength(1);
+  });
+  it("a deleted duplicate does not nuke an identical live flight (prefer live)", () => {
+    const t = trip({ flights: [
+      { id: "a", label: "去程", flightNo: "", from: "TPE", to: "OIT", dep: "", arr: "", _deleted: true, updatedAt: 0 },
+      { id: "b", label: "去程", flightNo: "", from: "TPE", to: "OIT", dep: "", arr: "", updatedAt: 0 },
+    ]});
+    const out = normalizeTrip(t).flights.filter((f) => !f._deleted);
+    expect(out).toHaveLength(1); // the live one survives
+  });
+  it("keeps genuinely different flights", () => {
+    const t = trip({ flights: [
+      { id: "a", label: "去程", flightNo: "", from: "TPE", to: "OIT", dep: "", arr: "", updatedAt: 0 },
+      { id: "b", label: "回程", flightNo: "", from: "OKA", to: "TPE", dep: "", arr: "", updatedAt: 0 },
+    ]});
+    expect(normalizeTrip(t).flights).toHaveLength(2);
+  });
+});
+
 describe("pick tie-break (equal updatedAt) — 中-1", () => {
   it("tombstone wins a tie, order-independent", () => {
     const edit = [{ id: "1", title: "t", updatedAt: 5 }];
@@ -127,6 +185,13 @@ describe("mergeTrip", () => {
     expect(adopted.food.map((x) => x.id).sort()).toEqual(["cloud", "f1", "f2"]);
   });
 
+  it("travellers are last-write-wins so removing 我 sticks (v4)", () => {
+    const local = trip({ travelers: scalar(["柔", "柔爸"], 5) });   // newer: 我 removed
+    const remote = trip({ travelers: scalar(["柔", "柔爸", "我"], 1) }); // older: still has 我
+    expect(mergeTrip(local, remote).travelers.v).toEqual(["柔", "柔爸"]);
+    expect(mergeTrip(remote, local).travelers.v).toEqual(["柔", "柔爸"]); // order-independent
+  });
+
   it("two editors changing different items both survive", () => {
     const base = trip({ food: [{ id: "f1", name: "ramen", updatedAt: 1 }] });
     const editorA = { ...base, food: [{ id: "f1", name: "ramen", updatedAt: 1 }, { id: "f2", name: "sushi", updatedAt: 2 }] };
@@ -160,6 +225,7 @@ describe("migrate (v1 -> v2)", () => {
     expect(m.days[0].items[0].order).toBe(0);
     expect(m.days[0].items[1].order).toBe(1);
     expect(m.expenses[0].category).toBe("other");
+    expect(m.travelers).toEqual({ v: ["我", "旅伴"], updatedAt: 0 }); // wrapped to scalar (v4)
     expect(m.packing).toEqual([]);
     expect(m.budgetJPY).toEqual({ v: 0, updatedAt: 0 });
   });

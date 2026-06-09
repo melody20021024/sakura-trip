@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Plus, Check, Trash2, Map as MapIcon, Download, Camera, X } from "lucide-react";
 import { Card, SectionTitle, Field, PinkBtn } from "../../components/ui.jsx";
 import { liveItems } from "../../lib/merge.js";
-import { openMap, byteSize, MAX_JSON_BYTES } from "../../lib/schema.js";
+import { openMap, openUrl, byteSize, MAX_JSON_BYTES } from "../../lib/schema.js";
 import { compressImage } from "../../lib/image.js";
 
 // C-09: reused for 美食 / 待購 / 打包 (DDR-08). `variant` toggles meta input,
@@ -14,6 +14,7 @@ export function ChecklistCard({ trip, confirm, field, title, icon, placeholder, 
   const mappable = variant !== "packing";
   const [name, setName] = useState("");
   const [meta, setMeta] = useState("");
+  const [mapUrl, setMapUrl] = useState("");
   const [photo, setPhoto] = useState(""); // pending photo for the item being added
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -43,9 +44,9 @@ export function ChecklistCard({ trip, confirm, field, title, icon, placeholder, 
 
   const add = () => {
     if (!name) return;
-    const base = mappable ? { name, meta, done: false } : { name, done: false };
+    const base = mappable ? { name, meta, mapUrl, done: false } : { name, done: false };
     trip.addCheck(field, withPhoto && photo ? { ...base, photo } : base);
-    setName(""); setMeta(""); setPhoto(""); setErr("");
+    setName(""); setMeta(""); setMapUrl(""); setPhoto(""); setErr("");
   };
   const loadTemplate = () => {
     const have = new Set(items.map((i) => i.name));
@@ -82,8 +83,9 @@ export function ChecklistCard({ trip, confirm, field, title, icon, placeholder, 
       )}
       <div className="space-y-2 mb-3">
         <Field placeholder={placeholder} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
+        {mappable && <Field placeholder={sub} value={meta} onChange={(e) => setMeta(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />}
         <div className="flex gap-2">
-          {mappable && <Field placeholder={sub} value={meta} onChange={(e) => setMeta(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />}
+          {mappable && <Field placeholder="地圖連結 (選填;留空則用名稱搜尋)" value={mapUrl} onChange={(e) => setMapUrl(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />}
           {withPhoto && (
             photo ? (
               <button onClick={() => setPhoto("")} aria-label="移除相片" className="relative shrink-0 w-10 h-10 rounded-xl overflow-hidden border border-pink-200">
@@ -127,8 +129,10 @@ export function ChecklistCard({ trip, confirm, field, title, icon, placeholder, 
                 <button onClick={() => removeItemPhoto(i)} className="text-[11px] text-rose-300 hover:text-rose-500">移除相片</button>
               )}
             </div>
-            {mappable && (
-              <button onClick={() => openMap(i.name + " " + (i.meta || ""))} aria-label="地圖" className="text-sky-400 hover:text-sky-600 shrink-0 w-9 h-9 grid place-items-center -my-1"><MapIcon size={16} /></button>
+            {(mappable || i.mapUrl) && (
+              <button onClick={() => (i.mapUrl ? openUrl(i.mapUrl) : openMap(i.name + " " + (i.meta || "")))}
+                aria-label="地圖" title={i.mapUrl ? "開啟地圖連結" : "在 Google 地圖搜尋"}
+                className="text-sky-400 hover:text-sky-600 shrink-0 w-9 h-9 grid place-items-center -my-1"><MapIcon size={16} /></button>
             )}
             <button onClick={() => del(i)} aria-label="刪除" className="text-rose-200 hover:text-rose-500 shrink-0 w-9 h-9 grid place-items-center -my-1"><Trash2 size={15} /></button>
           </div>

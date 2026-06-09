@@ -1,39 +1,46 @@
-// Model is configurable via env so it can be bumped without a code change.
-// Defaults to a current Claude Sonnet that supports the web_search tool.
-const FLIGHT_MODEL = process.env.FLIGHT_MODEL || "claude-sonnet-4-6";
+// Flight schedule lookup via AeroDataBox (free, no Claude cost).
+//
+// Get a FREE key (~600 units/month) at https://apimarket.aerodatabox.com/ —
+// you must SUBSCRIBE to the AeroDataBox API (free plan), not just create an
+// account — then set AERODATABOX_KEY in the environment. Returns
+// { from, to, depTime, arrTime } (empty strings when unknown). Fails soft so
+// the user can always fill the flight in manually.
+const BASE = "https://prod.api.market/api/v1/aedbx/aerodatabox";
+
+// scheduledTime.local looks like "2026-06-10 10:00+09:00" — pull out HH:MM.
+const hhmm = (dt) => {
+  if (!dt || !dt.local) return "";
+  const m = dt.local.match(/\d{4}-\d{2}-\d{2}[ T](\d{2}:\d{2})/);
+  return m ? m[1] : "";
+};
+
+const empty = { from: "", to: "", depTime: "", arrTime: "" };
 
 export default async function handler(req, res) {
   const { no, date } = req.query;
   if (!no || !date) return res.status(400).json({ error: "missing params" });
-  if (!process.env.ANTHROPIC_API_KEY)
+  if (!process.env.AERODATABOX_KEY)
     return res.status(200).json({ error: "no key" });
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: FLIGHT_MODEL,
-        max_tokens: 1000,
-        messages: [
-          {
-            role: "user",
-            content: `查詢航班 ${no} 在 ${date} 的定期時刻表。只回傳 JSON,不要任何其他文字,格式:{"from":"出發機場IATA","to":"抵達機場IATA","depTime":"HH:MM","arrTime":"HH:MM"}。查不到的欄位留空字串。`,
-          },
-        ],
-        tools: [{ type: "web_search_20260209", name: "web_search" }],
-      }),
+    const flightNo = String(no).replace(/\s+/g, "").toUpperCase();
+    const url = `${BASE}/flights/number/${encodeURIComponent(flightNo)}/${encodeURIComponent(date)}?withLocation=false&withAircraftImage=false`;
+    const r = await fetch(url, {
+      headers: { "x-magicapi-key": process.env.AERODATABOX_KEY, accept: "application/json" },
     });
+    // 204/404 = no scheduled flight for that number/date -> let user fill manually.
+    if (r.status === 204 || r.status === 404) return res.status(200).json(empty);
+    if (!r.ok) return res.status(200).json(empty);
+
     const j = await r.json();
-    const text = (j.content || [])
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("");
-    const m = text.match(/\{[\s\S]*\}/);
-    res.status(200).json(JSON.parse(m ? m[0] : "{}"));
+    const f = Array.isArray(j) ? j[0] : j;
+    if (!f || !f.departure) return res.status(200).json(empty);
+
+    res.status(200).json({
+      from: f.departure?.airport?.iata || "",
+      to: f.arrival?.airport?.iata || "",
+      depTime: hhmm(f.departure?.scheduledTime),
+      arrTime: hhmm(f.arrival?.scheduledTime),
+    });
   } catch (e) {
     res.status(500).json({ error: "lookup failed" });
   }
