@@ -19,7 +19,13 @@ export function DayCard({ day, idx, trip, confirm }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const items = liveItems(day.items).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  // Auto-order by time when filled (so users don't have to drag); items without
+  // a time fall to the end in their manual (drag) order. Drag still works and
+  // sets `order`, which governs untimed items and same-time ties.
+  const items = liveItems(day.items).sort((a, b) => {
+    const ta = a.time || "99:99", tb = b.time || "99:99";
+    return ta.localeCompare(tb) || ((a.order ?? 0) - (b.order ?? 0));
+  });
   const ids = items.map((i) => i.id);
   const dateLabel = new Date(day.date + "T00:00").toLocaleDateString("zh-TW", { month: "long", day: "numeric", weekday: "short" });
 
