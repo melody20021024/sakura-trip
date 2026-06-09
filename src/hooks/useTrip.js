@@ -222,6 +222,7 @@ export function useTrip() {
     deleteExpense: (id) => listDelete("expenses", id),
     // checklists (food/shopping/packing)
     addCheck: (field, item) => listAdd(field, item),
+    updateCheck: (field, id, patch) => listUpdate(field, id, patch),
     toggleCheck: (field, id) => {
       const cur = d()[field].find((x) => x.id === id);
       listUpdate(field, id, { done: !cur?.done });
