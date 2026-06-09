@@ -178,7 +178,7 @@ export function useTrip() {
   const d = () => dataRef.current;
 
   const setField = (name, value) => commit({ ...d(), [name]: { v: value, updatedAt: now() } });
-  const setTravelers = (travelers) => commit({ ...d(), travelers });
+  const setTravelers = (travelers) => commit({ ...d(), travelers: { v: travelers, updatedAt: now() } });
 
   const listAdd = (field, item) =>
     commit({ ...d(), [field]: [...d()[field], { id: uid(), updatedAt: now(), ...item }] });

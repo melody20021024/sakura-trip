@@ -10,7 +10,7 @@ const trip = (over = {}) => ({
   endDate: scalar("2026-06-16", 0),
   rate: scalar(0.21, 0),
   budgetJPY: scalar(0, 0),
-  travelers: ["我"],
+  travelers: scalar(["我"]),
   flights: [],
   days: [],
   expenses: [],
@@ -185,6 +185,13 @@ describe("mergeTrip", () => {
     expect(adopted.food.map((x) => x.id).sort()).toEqual(["cloud", "f1", "f2"]);
   });
 
+  it("travellers are last-write-wins so removing 我 sticks (v4)", () => {
+    const local = trip({ travelers: scalar(["柔", "柔爸"], 5) });   // newer: 我 removed
+    const remote = trip({ travelers: scalar(["柔", "柔爸", "我"], 1) }); // older: still has 我
+    expect(mergeTrip(local, remote).travelers.v).toEqual(["柔", "柔爸"]);
+    expect(mergeTrip(remote, local).travelers.v).toEqual(["柔", "柔爸"]); // order-independent
+  });
+
   it("two editors changing different items both survive", () => {
     const base = trip({ food: [{ id: "f1", name: "ramen", updatedAt: 1 }] });
     const editorA = { ...base, food: [{ id: "f1", name: "ramen", updatedAt: 1 }, { id: "f2", name: "sushi", updatedAt: 2 }] };
@@ -218,6 +225,7 @@ describe("migrate (v1 -> v2)", () => {
     expect(m.days[0].items[0].order).toBe(0);
     expect(m.days[0].items[1].order).toBe(1);
     expect(m.expenses[0].category).toBe("other");
+    expect(m.travelers).toEqual({ v: ["我", "旅伴"], updatedAt: 0 }); // wrapped to scalar (v4)
     expect(m.packing).toEqual([]);
     expect(m.budgetJPY).toEqual({ v: 0, updatedAt: 0 });
   });
