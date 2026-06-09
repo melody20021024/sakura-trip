@@ -2,7 +2,12 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+// Deployed as a GitHub Pages *project* site at /sakura-trip/, so assets and the
+// PWA scope must be served from that subpath (not the domain root).
+const base = "/sakura-trip/";
+
 export default defineConfig({
+  base,
   plugins: [
     react(),
     VitePWA({
@@ -11,11 +16,13 @@ export default defineConfig({
       manifest: {
         name: "櫻旅 — 日本旅遊",
         short_name: "櫻旅",
-        // start_url has no ?trip param on purpose; the app restores the last
-        // trip from localStorage (F-01), so launching from the home screen no
-        // longer mints a fresh empty trip the way v1 did.
-        id: "/",
-        start_url: "/",
+        // id/start_url/scope live under the Pages subpath. start_url has no
+        // ?trip param on purpose; the app restores the last trip from
+        // localStorage (F-01), so launching from the home screen no longer
+        // mints a fresh empty trip the way v1 did.
+        id: base,
+        start_url: base,
+        scope: base,
         theme_color: "#fb7185",
         background_color: "#fff1f2",
         display: "standalone",
