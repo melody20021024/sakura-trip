@@ -199,11 +199,13 @@ function migrate(raw: any): TripData {
 
 ## 6. API 介面設計
 
-### 6.1 航班時刻查詢（沿用 v1，更新模型）
+### 6.1 航班時刻查詢（改用 AeroDataBox 免費 API）
 
 - **Endpoint**：`GET /api/flight?no={flightNo}&date={YYYY-MM-DD}`
-- **Description**：以 Claude + web_search 查定期航班時刻。金鑰僅存 server 端。
-- **變更**：模型字串由寫死 `claude-sonnet-4-20250514` 改為 `process.env.FLIGHT_MODEL`（預設現役模型），其餘邏輯沿用。
+- **Description**：以 **AeroDataBox**（API.Market gateway）查定期航班時刻。**取代原 Claude + web_search 方案**（後者會計費）。
+- **上游**：`GET https://prod.api.market/api/v1/aedbx/aerodatabox/flights/number/{flightNo}/{date}`，header `x-magicapi-key: $AERODATABOX_KEY`。
+- **費用**：**免費層約 600 units/月**（API.Market 註冊 https://apimarket.aerodatabox.com/）；金鑰僅存 server 端 env `AERODATABOX_KEY`，不再需要 `ANTHROPIC_API_KEY`。
+- **對應上游欄位**：`departure.airport.iata` / `arrival.airport.iata` / `departure.scheduledTime.local` / `arrival.scheduledTime.local`（取 HH:MM）。
 
 #### Request：query string `no`, `date`
 
@@ -217,6 +219,7 @@ interface FlightLookupDto { from: string; to: string; depTime: string; arrTime: 
 |----------|-------------|-----------|------|
 | 缺參數 | 400 | MISSING_PARAMS | no 或 date 未帶 |
 | 未設金鑰 | 200 | `{error:"no key"}` | 前端據此提示手動填 |
+| 查無班次（204/404/非 ok）| 200 | 空字串物件 | 前端提示手動填（遠期日期班表可能未開放）|
 | 查詢失敗 | 500 | `{error:"lookup failed"}` | 前端 fallback 手動填 |
 
 ### 6.2 即時匯率查詢（新增，F-25）
