@@ -126,6 +126,14 @@ describe("normalizeTrip — 重複航班/清單修復", () => {
     expect(out.flights).toHaveLength(1);
     expect(out.food).toHaveLength(1);
   });
+  it("a deleted duplicate does not nuke an identical live flight (prefer live)", () => {
+    const t = trip({ flights: [
+      { id: "a", label: "去程", flightNo: "", from: "TPE", to: "OIT", dep: "", arr: "", _deleted: true, updatedAt: 0 },
+      { id: "b", label: "去程", flightNo: "", from: "TPE", to: "OIT", dep: "", arr: "", updatedAt: 0 },
+    ]});
+    const out = normalizeTrip(t).flights.filter((f) => !f._deleted);
+    expect(out).toHaveLength(1); // the live one survives
+  });
   it("keeps genuinely different flights", () => {
     const t = trip({ flights: [
       { id: "a", label: "去程", flightNo: "", from: "TPE", to: "OIT", dep: "", arr: "", updatedAt: 0 },
