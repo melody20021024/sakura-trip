@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { Plus, Trash2, BedDouble, Map as MapIcon } from "lucide-react";
+import { Plus, Trash2, BedDouble, Map as MapIcon, MapPin } from "lucide-react";
 import { Card } from "../../components/ui.jsx";
 import { liveItems } from "../../lib/merge.js";
 import { openMap, openUrl } from "../../lib/schema.js";
@@ -42,11 +42,13 @@ export function DayCard({ day, idx, trip, confirm }) {
   const delItem = async (item) => { if (await confirm(`確定刪除「${item.title}」?`)) trip.deleteItem(day.id, item.id); };
   const delDay = async () => { if (await confirm(`確定刪除 ${dateLabel} 一整天?`)) trip.deleteDay(day.id); };
 
-  const lodgingText = day.lodging?.v || "";
+  // Prefer the dedicated address/map field; fall back to searching the lodging
+  // name. A pasted URL opens directly; plain text is searched on Google Maps.
+  const mapTarget = (day.lodgingMap?.v || "").trim() || (day.lodging?.v || "").trim();
   const openLodging = () => {
-    if (!lodgingText) return;
-    if (/^https?:\/\//i.test(lodgingText.trim())) openUrl(lodgingText);
-    else openMap(lodgingText + " " + (day.city?.v || ""));
+    if (!mapTarget) return;
+    if (/^https?:\/\//i.test(mapTarget)) openUrl(mapTarget);
+    else openMap(mapTarget + " " + (day.city?.v || ""));
   };
 
   return (
@@ -67,11 +69,17 @@ export function DayCard({ day, idx, trip, confirm }) {
           <input value={day.lodging?.v || ""} onChange={(e) => trip.setDayField(day.id, "lodging", e.target.value)} placeholder="今晚住宿"
             onFocus={() => trip.focusField(`day:${day.id}:lodging`)} onBlur={trip.blurField}
             className="bg-transparent py-1.5 text-xs text-rose-700 placeholder-rose-300 focus:outline-none w-full" />
-          {lodgingText && (
-            <button onClick={openLodging} aria-label="住宿地圖" title="在地圖查住宿"
-              className="text-sky-400 hover:text-sky-600 shrink-0 w-7 h-7 grid place-items-center -mr-1"><MapIcon size={14} /></button>
-          )}
         </div>
+      </div>
+      <div className="flex items-center gap-1 bg-pink-50 border border-pink-100 rounded-lg px-2 mb-2">
+        <MapPin size={13} className="text-rose-300 shrink-0" />
+        <input value={day.lodgingMap?.v || ""} onChange={(e) => trip.setDayField(day.id, "lodgingMap", e.target.value)} placeholder="住宿地址 / Google 地圖連結 (選填)"
+          onFocus={() => trip.focusField(`day:${day.id}:lodgingMap`)} onBlur={trip.blurField}
+          className="bg-transparent py-1.5 text-xs text-rose-700 placeholder-rose-300 focus:outline-none w-full" />
+        {mapTarget && (
+          <button onClick={openLodging} aria-label="住宿地圖" title="在地圖查住宿"
+            className="text-sky-400 hover:text-sky-600 shrink-0 w-7 h-7 grid place-items-center -mr-1"><MapIcon size={14} /></button>
+        )}
       </div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>

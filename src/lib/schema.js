@@ -59,6 +59,7 @@ const sampleDay = (date, city, lodging, items) => ({
   date,
   city: scalar(city),
   lodging: scalar(lodging),
+  lodgingMap: scalar(""), // optional Google address / map URL for the lodging
   updatedAt: 0,
   items: items.map((it, i) => ({ id: uid(), order: i, time: "", note: "", updatedAt: 0, ...it })),
 });
