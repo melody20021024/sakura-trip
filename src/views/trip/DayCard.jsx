@@ -10,7 +10,7 @@ import { ItemForm } from "./ItemForm.jsx";
 // C-07: a single day. Owns the dnd context for its items (F-12).
 export function DayCard({ day, idx, trip, confirm }) {
   const [open, setOpen] = useState(false);
-  const [it, setIt] = useState({ time: "", title: "", type: "spot", note: "" });
+  const [it, setIt] = useState({ time: "", title: "", type: "spot", note: "", mapUrl: "" });
   const [editId, setEditId] = useState(null);
   const [draft, setDraft] = useState(null);
 
@@ -29,8 +29,8 @@ export function DayCard({ day, idx, trip, confirm }) {
     trip.reorderItems(day.id, next);
   };
 
-  const addItem = () => { if (!it.title) return; trip.addItem(day.id, it); setIt({ time: "", title: "", type: "spot", note: "" }); setOpen(false); };
-  const startEdit = (id) => { const i = items.find((x) => x.id === id); setEditId(id); setDraft({ time: i.time || "", title: i.title, type: i.type, note: i.note || "" }); };
+  const addItem = () => { if (!it.title) return; trip.addItem(day.id, it); setIt({ time: "", title: "", type: "spot", note: "", mapUrl: "" }); setOpen(false); };
+  const startEdit = (id) => { const i = items.find((x) => x.id === id); setEditId(id); setDraft({ time: i.time || "", title: i.title, type: i.type, note: i.note || "", mapUrl: i.mapUrl || "" }); };
   const saveEdit = () => { if (!draft.title) return; trip.updateItem(day.id, editId, draft); setEditId(null); setDraft(null); };
   const delItem = async (item) => { if (await confirm(`確定刪除「${item.title}」?`)) trip.deleteItem(day.id, item.id); };
   const delDay = async () => { if (await confirm(`確定刪除 ${dateLabel} 一整天?`)) trip.deleteDay(day.id); };

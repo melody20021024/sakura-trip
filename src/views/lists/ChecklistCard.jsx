@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Plus, Check, Trash2, Map as MapIcon, Download } from "lucide-react";
 import { Card, SectionTitle, Field, PinkBtn } from "../../components/ui.jsx";
 import { liveItems } from "../../lib/merge.js";
-import { openMap } from "../../lib/schema.js";
+import { openMap, openUrl } from "../../lib/schema.js";
 
 // C-09: reused for 美食 / 待購 / 打包 (DDR-08). `variant` toggles meta input,
 // map button, and the template loader.
@@ -11,11 +11,12 @@ export function ChecklistCard({ trip, confirm, field, title, icon, placeholder, 
   const mappable = variant !== "packing";
   const [name, setName] = useState("");
   const [meta, setMeta] = useState("");
+  const [mapUrl, setMapUrl] = useState("");
 
   const add = () => {
     if (!name) return;
-    trip.addCheck(field, mappable ? { name, meta, done: false } : { name, done: false });
-    setName(""); setMeta("");
+    trip.addCheck(field, mappable ? { name, meta, mapUrl, done: false } : { name, done: false });
+    setName(""); setMeta(""); setMapUrl("");
   };
   const loadTemplate = () => {
     const have = new Set(items.map((i) => i.name));
@@ -36,8 +37,9 @@ export function ChecklistCard({ trip, confirm, field, title, icon, placeholder, 
       )}
       <div className="space-y-2 mb-3">
         <Field placeholder={placeholder} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
+        {mappable && <Field placeholder={sub} value={meta} onChange={(e) => setMeta(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />}
         <div className="flex gap-2">
-          {mappable && <Field placeholder={sub} value={meta} onChange={(e) => setMeta(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />}
+          {mappable && <Field placeholder="地圖連結 (選填;留空則用名稱搜尋)" value={mapUrl} onChange={(e) => setMapUrl(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />}
           <PinkBtn onClick={add} className={`shrink-0 ${mappable ? "" : "flex-1"}`}><Plus size={16} /></PinkBtn>
         </div>
       </div>
@@ -52,8 +54,10 @@ export function ChecklistCard({ trip, confirm, field, title, icon, placeholder, 
               <div className={`text-sm font-medium ${i.done ? "line-through text-rose-300" : ""}`}>{i.name}</div>
               {i.meta && <div className="text-xs text-rose-400">{i.meta}</div>}
             </div>
-            {mappable && (
-              <button onClick={() => openMap(i.name + " " + (i.meta || ""))} aria-label="地圖" className="text-sky-400 hover:text-sky-600 shrink-0 w-9 h-9 grid place-items-center -my-1"><MapIcon size={16} /></button>
+            {(mappable || i.mapUrl) && (
+              <button onClick={() => (i.mapUrl ? openUrl(i.mapUrl) : openMap(i.name + " " + (i.meta || "")))}
+                aria-label="地圖" title={i.mapUrl ? "開啟地圖連結" : "在 Google 地圖搜尋"}
+                className="text-sky-400 hover:text-sky-600 shrink-0 w-9 h-9 grid place-items-center -my-1"><MapIcon size={16} /></button>
             )}
             <button onClick={() => del(i)} aria-label="刪除" className="text-rose-200 hover:text-rose-500 shrink-0 w-9 h-9 grid place-items-center -my-1"><Trash2 size={15} /></button>
           </div>
