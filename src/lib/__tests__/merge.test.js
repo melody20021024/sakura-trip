@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeTrip, mergeList, mergeDays, newer, liveItems, collapseDaysByDate } from "../merge.js";
+import { mergeTrip, mergeList, mergeDays, newer, liveItems, collapseDaysByDate, normalizeTrip } from "../merge.js";
 import { migrate } from "../migrate.js";
 import { scalar, SCHEMA_VERSION } from "../schema.js";
 
@@ -111,6 +111,27 @@ describe("collapseDaysByDate — 重複天數修復", () => {
   it("leaves a single day untouched", () => {
     const d = sampleDay("a", "2026-06-10");
     expect(collapseDaysByDate([d])[0]).toBe(d);
+  });
+});
+
+describe("normalizeTrip — 重複航班/清單修復", () => {
+  it("de-dups triplicated sample flights and food by content", () => {
+    const fl = (id) => ({ id, label: "去程", flightNo: "", from: "TPE", to: "OIT", dep: "2026-06-10T00:00", arr: "", updatedAt: 0 });
+    const food = (id) => ({ id, name: "一蘭拉麵", meta: "福岡", done: false, updatedAt: 0 });
+    const t = trip({
+      flights: [fl("a"), fl("b"), fl("c")],
+      food: [food("x"), food("y")],
+    });
+    const out = normalizeTrip(t);
+    expect(out.flights).toHaveLength(1);
+    expect(out.food).toHaveLength(1);
+  });
+  it("keeps genuinely different flights", () => {
+    const t = trip({ flights: [
+      { id: "a", label: "去程", flightNo: "", from: "TPE", to: "OIT", dep: "", arr: "", updatedAt: 0 },
+      { id: "b", label: "回程", flightNo: "", from: "OKA", to: "TPE", dep: "", arr: "", updatedAt: 0 },
+    ]});
+    expect(normalizeTrip(t).flights).toHaveLength(2);
   });
 });
 

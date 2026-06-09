@@ -119,10 +119,41 @@ export function collapseDaysByDate(days = []) {
   return out;
 }
 
-export function mergeTrip(local, remote) {
-  if (!remote) return local;
-  if (!local) return remote;
+// De-dup a list by content (ignoring id/updatedAt) so identical sample copies
+// seeded with different ids collapse back to one. Used to heal the duplicate
+// flights / checklist items from the same bug as duplicate days.
+function dedupeByContent(list = [], keyFn) {
+  const seen = new Map();
+  for (const x of list) {
+    if (!x) continue;
+    const k = keyFn(x);
+    const prev = seen.get(k);
+    seen.set(k, prev ? pick(prev, x) : x);
+  }
+  return [...seen.values()];
+}
+const flightKey = (f) => `${f.label}|${f.flightNo}|${f.from}|${f.to}|${f.dep}|${f.arr}`;
+const checkKey = (c) => `${c.name}|${c.meta || ""}`;
+const albumKey = (a) => `${a.label}|${a.url}`;
+
+// Normalise a trip: one day per date, and identical sample list-entries de-duped.
+export function normalizeTrip(t) {
+  if (!t) return t;
   return {
+    ...t,
+    flights: dedupeByContent(t.flights, flightKey),
+    days: collapseDaysByDate(t.days),
+    food: dedupeByContent(t.food, checkKey),
+    shopping: dedupeByContent(t.shopping, checkKey),
+    packing: dedupeByContent(t.packing, checkKey),
+    albums: dedupeByContent(t.albums, albumKey),
+  };
+}
+
+export function mergeTrip(local, remote) {
+  if (!remote) return normalizeTrip(local);
+  if (!local) return normalizeTrip(remote);
+  return normalizeTrip({
     schemaVersion: SCHEMA_VERSION,
     tripName: pick(local.tripName, remote.tripName),
     startDate: pick(local.startDate, remote.startDate),
@@ -131,7 +162,7 @@ export function mergeTrip(local, remote) {
     budgetJPY: pick(local.budgetJPY, remote.budgetJPY),
     travelers: union(local.travelers, remote.travelers),
     flights: mergeList(local.flights, remote.flights),
-    days: collapseDaysByDate(mergeDays(local.days, remote.days)),
+    days: mergeDays(local.days, remote.days),
     expenses: mergeList(local.expenses, remote.expenses),
     food: mergeList(local.food, remote.food),
     shopping: mergeList(local.shopping, remote.shopping),
@@ -141,7 +172,7 @@ export function mergeTrip(local, remote) {
     ...(local._v1backup || remote._v1backup
       ? { _v1backup: local._v1backup || remote._v1backup }
       : {}),
-  };
+  });
 }
 
 // Strip tombstones and sort, for rendering. Days keep their own item ordering.
