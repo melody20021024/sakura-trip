@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeTrip, mergeList, mergeDays, newer, liveItems } from "../merge.js";
+import { mergeTrip, mergeList, mergeDays, newer, liveItems, collapseDaysByDate } from "../merge.js";
 import { migrate } from "../migrate.js";
 import { scalar, SCHEMA_VERSION } from "../schema.js";
 
@@ -82,6 +82,35 @@ describe("mergeDays (nested items)", () => {
     const remote = [day([{ id: "i1", title: "a", updatedAt: 1 }, { id: "i3", title: "remote", updatedAt: 2 }])];
     const out = mergeDays(local, remote);
     expect(out[0].items.map((i) => i.id).sort()).toEqual(["i1", "i2", "i3"]);
+  });
+});
+
+describe("collapseDaysByDate — 重複天數修復", () => {
+  const sampleDay = (id, date) => ({
+    id, date, city: scalar("", 0), lodging: scalar("", 0), updatedAt: 0,
+    items: [
+      { id: id + "-i1", time: "", type: "move", title: "抵達大分機場", note: "", updatedAt: 0 },
+      { id: id + "-i2", time: "", type: "spot", title: "金鱗湖", note: "", updatedAt: 0 },
+    ],
+  });
+
+  it("collapses three same-date sample days into one, de-duping items by content", () => {
+    const days = [sampleDay("b", "2026-06-10"), sampleDay("a", "2026-06-10"), sampleDay("c", "2026-06-10")];
+    const out = collapseDaysByDate(days);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe("a"); // smallest id survives (deterministic)
+    expect(out[0].items).toHaveLength(2); // 6 unioned -> 2 by content
+  });
+
+  it("keeps distinct dates and is order-independent", () => {
+    const days = [sampleDay("x", "2026-06-11"), sampleDay("a", "2026-06-10"), sampleDay("b", "2026-06-10")];
+    const out = collapseDaysByDate(days);
+    expect(out.map((d) => d.date).sort()).toEqual(["2026-06-10", "2026-06-11"]);
+  });
+
+  it("leaves a single day untouched", () => {
+    const d = sampleDay("a", "2026-06-10");
+    expect(collapseDaysByDate([d])[0]).toBe(d);
   });
 });
 

@@ -80,6 +80,45 @@ export function mergeDays(a = [], b = []) {
   return [...byId.values()];
 }
 
+// Collapse days that share the same calendar date into one (this app only ever
+// wants one card per date). Heals the "duplicate days" bug where seeding the
+// sample trip across sessions produced several same-date days with different
+// ids. The surviving id is the lexicographically smallest so every client
+// converges. Items are unioned and then de-duplicated by content, so the
+// triplicated sample items collapse back to one each.
+const itemContentKey = (it) =>
+  `${it.time || ""}|${it.type || ""}|${it.title || ""}|${it.note || ""}`;
+
+export function collapseDaysByDate(days = []) {
+  const groups = new Map();
+  for (const d of days) {
+    if (!d || d.date == null) continue;
+    const g = groups.get(d.date);
+    if (g) g.push(d); else groups.set(d.date, [d]);
+  }
+  const out = [];
+  for (const group of groups.values()) {
+    if (group.length === 1) { out.push(group[0]); continue; }
+    group.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const base = group[0];
+    let city = base.city, lodging = base.lodging, items = [];
+    for (const d of group) {
+      city = pick(city, d.city);
+      lodging = pick(lodging, d.lodging);
+      items = mergeList(items, d.items || []);
+    }
+    // de-dup unioned items by content (collapses identical sample copies)
+    const seen = new Map();
+    for (const it of items) {
+      const k = itemContentKey(it);
+      const prev = seen.get(k);
+      seen.set(k, prev ? pick(prev, it) : it);
+    }
+    out.push({ ...base, city, lodging, items: [...seen.values()] });
+  }
+  return out;
+}
+
 export function mergeTrip(local, remote) {
   if (!remote) return local;
   if (!local) return remote;
@@ -92,7 +131,7 @@ export function mergeTrip(local, remote) {
     budgetJPY: pick(local.budgetJPY, remote.budgetJPY),
     travelers: union(local.travelers, remote.travelers),
     flights: mergeList(local.flights, remote.flights),
-    days: mergeDays(local.days, remote.days),
+    days: collapseDaysByDate(mergeDays(local.days, remote.days)),
     expenses: mergeList(local.expenses, remote.expenses),
     food: mergeList(local.food, remote.food),
     shopping: mergeList(local.shopping, remote.shopping),
