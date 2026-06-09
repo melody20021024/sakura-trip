@@ -32,6 +32,10 @@ export const PACKING_TEMPLATE = [
   "萬國變壓器", "常備藥", "雨具", "換洗衣物", "盥洗用品",
 ];
 
+// Default travellers for a new trip. No "我" placeholder — with several people
+// opening the shared link, "我" is ambiguous, so we seed real names.
+export const DEFAULT_TRAVELERS = ["柔", "柔爸", "柔媽", "宣", "宣爸"];
+
 export const SYM = { JPY: "¥", TWD: "NT$" };
 export const money = (n, c = "JPY") =>
   (SYM[c] || "") + Math.round(Number(n || 0)).toLocaleString();
@@ -66,7 +70,7 @@ export const DEFAULT = {
   endDate: scalar("2026-06-16"),
   rate: scalar(0.21),
   budgetJPY: scalar(0),
-  travelers: ["我"],
+  travelers: [...DEFAULT_TRAVELERS],
   flights: [
     { id: uid(), label: "去程", flightNo: "", from: "TPE", to: "OIT", dep: "2026-06-10T00:00", arr: "", est: false, updatedAt: 0 },
     { id: uid(), label: "國內線", flightNo: "", from: "FUK", to: "OKA", dep: "2026-06-13T00:00", arr: "", est: false, updatedAt: 0 },
