@@ -11,7 +11,12 @@ const stamp = (x) => ({ updatedAt: 0, ...x });
 
 export function migrate(raw) {
   if (!raw || typeof raw !== "object") return null; // caller uses freshDefault()
-  if (raw.schemaVersion === SCHEMA_VERSION) return raw; // current, no-op
+  // Current or newer: hand the blob back untouched. A newer schema must never be
+  // rebuilt by this (older) bundle — the field list below is a whitelist, so it
+  // would silently drop every field this version doesn't know about, and
+  // pushRemote would then write the stripped copy back to the cloud. v1 data has
+  // no schemaVersion at all, and `undefined >= n` is false, so it still migrates.
+  if (raw.schemaVersion >= SCHEMA_VERSION) return raw;
 
   // Back up only the original v1 blob (no schemaVersion). Early-v2 data carries
   // its own _v1backup which we preserve; we don't re-snapshot on v2->v3.
@@ -21,6 +26,9 @@ export function migrate(raw) {
     : raw._v1backup;
 
   const normalized = {
+    // Spread first so anything not listed below survives. Without this, a field
+    // added by a future version is dropped on the way through an older bundle.
+    ...raw,
     schemaVersion: SCHEMA_VERSION,
     tripName: wrapScalar(raw.tripName, ""),
     startDate: wrapScalar(raw.startDate, ""),
