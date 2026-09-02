@@ -295,6 +295,39 @@ describe("migrate — 未知欄位向前相容 (F-69, T-70/T-71/T-72)", () => {
     expect(m.tripName).toEqual({ v: "九州", updatedAt: 0 }); // 既有遷移行為不變
   });
 
+  it("T-70: mergeTrip 不得丟掉未知欄位，也不得降版號（F-69 下半，真正的主要破口）", () => {
+    // mergeTrip 的呼叫點涵蓋 useTrip 載入/Realtime/applyRemote 與 sync.pushRemote,
+    // 觸發頻率遠高於 migrate — 只修 migrate 完全擋不住資料遺失。
+    const v4local = trip({ schemaVersion: SCHEMA_VERSION });
+    const v5remote = trip({
+      schemaVersion: SCHEMA_VERSION + 1,
+      tripName: scalar("B", 200),
+      pockets: [{ id: "p1", title: "福岡美食", updatedAt: 9 }],
+      places: [{ id: "x1", name: "一蘭 福岡總本店", updatedAt: 9 }],
+    });
+
+    const merged = mergeTrip(v4local, v5remote);
+    expect(merged.pockets).toHaveLength(1);
+    expect(merged.places[0].name).toBe("一蘭 福岡總本店");
+    expect(merged.schemaVersion).toBe(SCHEMA_VERSION + 1); // 不得被降回本版
+    expect(merged.tripName.v).toBe("B"); // 既有欄位級 LWW 不變
+
+    // 方向對調也要成立（本地已有新欄位、遠端還沒）
+    const other = mergeTrip(v5remote, v4local);
+    expect(other.places).toHaveLength(1);
+    expect(other.schemaVersion).toBe(SCHEMA_VERSION + 1);
+  });
+
+  it("mergeTrip 帶未知欄位時仍冪等", () => {
+    const t = trip({
+      schemaVersion: SCHEMA_VERSION,
+      places: [{ id: "x1", name: "一蘭", updatedAt: 1 }],
+    });
+    const once = mergeTrip(t, t);
+    expect(mergeTrip(once, once)).toEqual(once);
+    expect(once.places).toHaveLength(1);
+  });
+
   it("T-72: 帶未知欄位仍然冪等，且既有清單零損失", () => {
     const once = migrate({
       tripName: "九州",
