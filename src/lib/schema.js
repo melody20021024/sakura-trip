@@ -145,6 +145,13 @@ const LIST_FIELDS = ["flights", "days", "expenses", "food", "shopping", "packing
 // Returns { ok, reason }. Cheap structural sanity check before pushing.
 export function validateTrip(data) {
   if (!data || typeof data !== "object") return { ok: false, reason: "資料格式錯誤" };
+  // A version above ours means this bundle is the stale one: merge.js kept the
+  // higher number precisely so we refuse the write instead of pushing a copy
+  // stripped of fields we don't understand. Say so in words the user can act on
+  // — "資料版本不符" gives them nothing to do. Checked before the generic
+  // mismatch so the specific case wins.
+  if (data.schemaVersion > SCHEMA_VERSION)
+    return { ok: false, reason: "App 版本過舊,請重新整理頁面" };
   if (data.schemaVersion !== SCHEMA_VERSION) return { ok: false, reason: "資料版本不符" };
   if (!data.travelers || !Array.isArray(data.travelers.v) || data.travelers.v.length === 0)
     return { ok: false, reason: "至少需要一位旅伴" };
