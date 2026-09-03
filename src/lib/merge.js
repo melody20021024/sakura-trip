@@ -163,11 +163,45 @@ export function normalizeTrip(t) {
   };
 }
 
+// Every top-level key mergeTrip knows how to merge. Anything outside this set
+// belongs to a schema version this bundle predates.
+const KNOWN_TRIP_KEYS = new Set([
+  "schemaVersion", "tripName", "startDate", "endDate", "rate", "budgetJPY",
+  "travelers", "flights", "days", "expenses", "food", "shopping", "packing",
+  "albums", "_v1backup",
+]);
+
+// Carry unknown top-level fields across the merge. This bundle cannot merge a
+// field it has never heard of, but it must not delete it either: mergeTrip runs
+// on load, on every realtime push, and inside pushRemote's read-merge-write, so
+// dropping a field here means an older device erases it for everyone. Union with
+// remote winning — an older bundle can't have edited a field it doesn't render,
+// so its copy is only ever a stale pull.
+function passthrough(local, remote) {
+  const out = {};
+  for (const src of [local, remote]) {
+    for (const k of Object.keys(src)) {
+      if (!KNOWN_TRIP_KEYS.has(k)) out[k] = src[k];
+    }
+  }
+  return out;
+}
+
 export function mergeTrip(local, remote) {
   if (!remote) return normalizeTrip(local);
   if (!local) return normalizeTrip(remote);
   return normalizeTrip({
-    schemaVersion: SCHEMA_VERSION,
+    ...passthrough(local, remote),
+    // Never write a version lower than either side's. Hard-coding SCHEMA_VERSION
+    // here let an older bundle relabel a newer blob as its own, which is what
+    // made validateTrip accept the stripped result and push it to the cloud.
+    // Keeping the higher number makes validateTrip reject the write instead, so
+    // a stale device degrades to read-only rather than destroying data.
+    schemaVersion: Math.max(
+      local.schemaVersion || 0,
+      remote.schemaVersion || 0,
+      SCHEMA_VERSION
+    ),
     tripName: pick(local.tripName, remote.tripName),
     startDate: pick(local.startDate, remote.startDate),
     endDate: pick(local.endDate, remote.endDate),

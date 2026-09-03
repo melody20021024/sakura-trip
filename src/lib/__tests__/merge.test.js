@@ -256,3 +256,92 @@ describe("migrate (v1 -> v2)", () => {
     expect(merged.expenses).toHaveLength(1);
   });
 });
+
+// F-69 上半。The failure this guards against is cloud-level and unrecoverable:
+// a device still running an older bundle pulls a newer blob, migrate() rebuilds
+// it from a field whitelist, the unknown fields vanish, validateTrip says the
+// result is fine, and pushRemote writes the stripped copy back for everyone.
+describe("migrate — 未知欄位向前相容 (F-69, T-70/T-71/T-72)", () => {
+  it("T-71: 版號比自己新 → 原樣回傳，不重建、不降版號", () => {
+    const future = {
+      schemaVersion: SCHEMA_VERSION + 1,
+      tripName: scalar("未來", 5),
+      travelers: scalar(["柔"]),
+      days: [],
+      pockets: [{ id: "p1", title: "福岡美食", updatedAt: 9 }],
+      places: [{ id: "x1", name: "一蘭", updatedAt: 9 }],
+    };
+    const out = migrate(future);
+    expect(out).toBe(future); // 同一個物件,連複製都沒做
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION + 1);
+    expect(out.pockets).toHaveLength(1);
+    expect(out.places).toHaveLength(1);
+  });
+
+  it("T-70: 舊版資料帶著未知欄位遷移 → 欄位零損失", () => {
+    const oldWithFuture = {
+      // 沒有 schemaVersion(v1),但帶著未來版本才有的欄位
+      tripName: "九州",
+      travelers: ["柔"],
+      places: [{ id: "x1", name: "一蘭 福岡總本店", updatedAt: 3 }],
+      pockets: [{ id: "p1", title: "福岡美食", updatedAt: 3 }],
+      somethingNobodyKnowsYet: { deep: [1, 2, 3] },
+    };
+    const m = migrate(oldWithFuture);
+    expect(m.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(m.places).toEqual(oldWithFuture.places);
+    expect(m.pockets).toEqual(oldWithFuture.pockets);
+    expect(m.somethingNobodyKnowsYet).toEqual({ deep: [1, 2, 3] });
+    expect(m.tripName).toEqual({ v: "九州", updatedAt: 0 }); // 既有遷移行為不變
+  });
+
+  it("T-70: mergeTrip 不得丟掉未知欄位，也不得降版號（F-69 下半，真正的主要破口）", () => {
+    // mergeTrip 的呼叫點涵蓋 useTrip 載入/Realtime/applyRemote 與 sync.pushRemote,
+    // 觸發頻率遠高於 migrate — 只修 migrate 完全擋不住資料遺失。
+    const v4local = trip({ schemaVersion: SCHEMA_VERSION });
+    const v5remote = trip({
+      schemaVersion: SCHEMA_VERSION + 1,
+      tripName: scalar("B", 200),
+      pockets: [{ id: "p1", title: "福岡美食", updatedAt: 9 }],
+      places: [{ id: "x1", name: "一蘭 福岡總本店", updatedAt: 9 }],
+    });
+
+    const merged = mergeTrip(v4local, v5remote);
+    expect(merged.pockets).toHaveLength(1);
+    expect(merged.places[0].name).toBe("一蘭 福岡總本店");
+    expect(merged.schemaVersion).toBe(SCHEMA_VERSION + 1); // 不得被降回本版
+    expect(merged.tripName.v).toBe("B"); // 既有欄位級 LWW 不變
+
+    // 方向對調也要成立（本地已有新欄位、遠端還沒）
+    const other = mergeTrip(v5remote, v4local);
+    expect(other.places).toHaveLength(1);
+    expect(other.schemaVersion).toBe(SCHEMA_VERSION + 1);
+  });
+
+  it("mergeTrip 帶未知欄位時仍冪等", () => {
+    const t = trip({
+      schemaVersion: SCHEMA_VERSION,
+      places: [{ id: "x1", name: "一蘭", updatedAt: 1 }],
+    });
+    const once = mergeTrip(t, t);
+    expect(mergeTrip(once, once)).toEqual(once);
+    expect(once.places).toHaveLength(1);
+  });
+
+  it("T-72: 帶未知欄位仍然冪等，且既有清單零損失", () => {
+    const once = migrate({
+      tripName: "九州",
+      travelers: ["柔"],
+      days: [{ id: "d1", date: "2026-06-10", city: "福岡", lodging: "博多",
+        items: [{ id: "i1", title: "拉麵", type: "food" }, { id: "i2", title: "天神", type: "spot" }] }],
+      expenses: [{ id: "e1", desc: "晚餐", amount: 3000, currency: "JPY", paidBy: "柔", split: ["柔"] }],
+      food: [{ id: "f1", name: "一蘭", meta: "", done: false }],
+      places: [{ id: "x1", name: "一蘭", updatedAt: 1 }],
+    });
+    expect(migrate(once)).toBe(once); // 已是現行版號 → 原樣回傳
+    expect(once.days[0].items).toHaveLength(2);
+    expect(once.expenses).toHaveLength(1);
+    expect(once.food).toHaveLength(1);
+    expect(once.places).toHaveLength(1);
+  });
+});
