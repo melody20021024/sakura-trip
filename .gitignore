@@ -25,3 +25,7 @@ vite.config.js.timestamp-*.mjs
 .DS_Store
 *.local
 .vercel
+
+# MCP / 驗證過程的暫存產物，不進版控
+.playwright-mcp/
+sakura-verify.png

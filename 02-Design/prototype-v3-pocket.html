@@ -1,0 +1,947 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>櫻旅 v3 口袋地點 — 高保真原型</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{ --ease:cubic-bezier(.2,.8,.2,1); }
+  body{ font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','PingFang TC',sans-serif; }
+  .sheet-panel{ animation:slideUp .18s var(--ease); }
+  @keyframes slideUp{ from{transform:translateY(24px);opacity:.4} to{transform:translateY(0);opacity:1} }
+  .fade-in{ animation:fade .18s var(--ease); }
+  @keyframes fade{ from{opacity:0} to{opacity:1} }
+  .toast{ animation:toastIn .18s var(--ease); }
+  @keyframes toastIn{ from{transform:translateY(8px);opacity:0} to{transform:translateY(0);opacity:1} }
+  @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
+</style>
+</head>
+<body class="bg-gradient-to-b from-pink-50 via-rose-50 to-pink-100 text-rose-900 pb-28">
+<div class="max-w-2xl mx-auto">
+
+  <!-- ===================== Header ===================== -->
+  <header class="sticky top-0 z-20 bg-white/70 backdrop-blur border-b border-pink-100">
+    <div class="px-4 py-3 flex items-center gap-2">
+      <span class="text-2xl">🌸</span>
+      <h1 class="text-lg font-bold text-rose-500 truncate flex-1">九州・沖繩之旅 🌸</h1>
+      <!-- C-12 SyncStatusBadge（v3 增修：failed 改為「失敗·看原因」） -->
+      <button id="syncBadge" role="status" aria-live="polite" aria-expanded="false"
+        class="text-[11px] rounded-full px-2 py-1 flex items-center gap-1 shrink-0 bg-emerald-50 text-emerald-600">
+        <span id="syncDot" class="w-2 h-2 rounded-full bg-emerald-400"></span><span id="syncTxt">已同步</span>
+      </button>
+      <span class="text-xs text-rose-300 flex items-center gap-1">👥 3</span>
+    </div>
+    <!-- C-17 OfflineBanner（v2 既有） -->
+    <div id="offBanner" class="hidden bg-amber-100 text-amber-700 text-xs text-center py-1">📴 離線中・1 筆待同步</div>
+    <!-- C-28 SyncReasonNote（F-77 新增） -->
+    <div id="syncReason" class="hidden bg-rose-50 text-rose-600 text-xs px-4 py-2 flex items-center gap-2" role="alert">
+      <span class="flex-1">同步失敗：<b>資料過大</b>　這份行程超過 1MB 上限，先刪一些相片或舊地點。</span>
+      <button class="underline shrink-0" onclick="alert('（原型）切到清單頁')">去清單頁</button>
+      <button class="underline shrink-0" onclick="setSync('syncing');setTimeout(()=>setSync('synced'),1200)">重試</button>
+      <button class="shrink-0 w-6 h-6" aria-label="收起" onclick="hide('syncReason')">✕</button>
+    </div>
+  </header>
+
+  <main class="px-4 py-4">
+
+    <!-- ============================================================ -->
+    <!-- P-06 口袋 Pocket                                              -->
+    <!-- ============================================================ -->
+    <section data-tab="places" class="space-y-4">
+
+      <!-- C-27 CapacityNotice (F-76)：預設隱藏，用右側控制列開啟 -->
+      <div id="capacity" class="hidden bg-rose-50 border border-rose-200 text-rose-600 rounded-2xl p-3 text-xs fade-in">
+        <div class="font-medium mb-1">快滿了。這份行程的資料剩下不到 10%。</div>
+        <div class="text-rose-500/90">最占空間的通常是<b>待購清單的相片</b>，其次是舊的口袋地點。</div>
+        <div class="flex gap-2 mt-2">
+          <button class="border border-rose-200 rounded-lg px-3 py-1.5" onclick="alert('（原型）切到清單頁')">去清單頁看看</button>
+          <button class="border border-rose-200 rounded-lg px-3 py-1.5" onclick="alert('（原型）捲到最舊的口袋卡片')">去口袋清舊地點</button>
+        </div>
+      </div>
+
+      <!-- ---------- S-01 空狀態（不得提地圖、不得提 Google 帳號） ---------- -->
+      <div id="emptyState" class="hidden bg-white/80 rounded-2xl border border-pink-100 shadow-sm p-6 text-center fade-in">
+        <div class="text-4xl mb-2">🌸</div>
+        <div class="font-bold text-rose-500 mb-2">口袋是空的</div>
+        <p class="text-xs text-rose-400 leading-relaxed mb-1">滑 IG 看到想去的店，<b class="text-rose-500">截一張有說明文字的圖</b>丟進來。</p>
+        <p class="text-xs text-rose-400 leading-relaxed mb-1">Threads、小紅書、YouTube 則可以直接貼連結或貼文文字。</p>
+        <p class="text-xs text-rose-400 leading-relaxed mb-4">櫻旅會拆成一個個地點，再告訴你這家店<b class="text-rose-500">適合排哪一天</b>。</p>
+        <button onclick="openIngest()" class="w-full bg-rose-400 hover:bg-rose-500 text-white rounded-xl py-2.5 text-sm font-medium">＋ 收藏一則貼文</button>
+        <button onclick="go('setting')" class="mt-3 text-[11px] text-rose-300 underline">設定 iOS 捷徑，從 IG 分享選單直接開櫻旅</button>
+      </div>
+
+      <!-- ---------- C-18 IngestBar ---------- -->
+      <div id="ingestBar" class="bg-white/80 rounded-2xl border border-pink-100 shadow-sm p-4">
+        <p class="text-xs text-rose-400 mb-2">看到想去的店，把<b>截圖</b>、連結或貼文文字丟進來，我幫你拆成地點、再告訴你排哪一天。</p>
+        <button onclick="openIngest()" class="w-full bg-rose-400 hover:bg-rose-500 text-white rounded-xl py-2.5 text-sm font-medium">＋ 收藏一則貼文</button>
+      </div>
+
+      <!-- ---------- 貼文卡片列表 ---------- -->
+      <div id="pocketList" class="space-y-4"></div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- P-01 行程（僅供驗證「加入行程」的結果，非本版設計範圍）        -->
+    <!-- ============================================================ -->
+    <section data-tab="trip" class="hidden space-y-3">
+      <p class="text-[11px] text-rose-300">↓ 這一頁沿用 v2 設計，這裡只用來驗證 F-75 寫入結果（新項目與口袋長得一模一樣）。</p>
+      <div id="dayCards" class="space-y-3"></div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- P-05 設定（本版只新增 C-26 捷徑卡）                            -->
+    <!-- ============================================================ -->
+    <section data-tab="setting" class="hidden space-y-4">
+      <div class="bg-white/80 rounded-2xl border border-pink-100 shadow-sm p-4">
+        <div class="flex items-center gap-2 mb-3"><span class="text-rose-400">👥</span><h2 class="font-bold text-rose-500 flex-1">分享連結</h2></div>
+        <p class="text-xs text-rose-400 mb-2">把這個網址傳給旅伴，他們打開就能看到並一起編輯這份行程。</p>
+        <div class="flex gap-2">
+          <input readOnly value="https://sakura-trip-omega.vercel.app/?trip=k3f9x2q" class="flex-1 bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-xs text-rose-700"/>
+          <button class="shrink-0 bg-rose-400 text-white rounded-xl px-4 py-2 text-sm">複製</button>
+        </div>
+      </div>
+
+      <!-- C-26 ShortcutCard (F-81) — 比照上面的分享連結卡 -->
+      <div id="shortcutCard" class="bg-white/80 rounded-2xl border border-pink-100 shadow-sm p-4">
+        <div class="flex items-center gap-2 mb-3"><span class="text-rose-400">🔗</span><h2 class="font-bold text-rose-500 flex-1">iOS 捷徑：從 IG 分享選單直接開櫻旅</h2></div>
+        <p class="text-xs text-rose-400 mb-2">裝一次之後，在 IG 按分享就會出現「存到櫻旅」，<b>幫你把連結存成來源、順手打開收藏面板</b>。<b>不裝也完全不影響</b>，照樣可以用貼上的。</p>
+        <div class="flex gap-2">
+          <input id="shortcutPrefix" readOnly value="https://sakura-trip-omega.vercel.app/?trip=k3f9x2q&share=" class="flex-1 bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-xs text-rose-700"/>
+          <button id="copyPrefix" class="shrink-0 bg-rose-400 hover:bg-rose-500 text-white rounded-xl px-4 py-2 text-sm">複製</button>
+        </div>
+        <button id="howToggle" class="mt-3 text-xs text-purple-500">怎麼做？ ▾</button>
+        <ol id="howSteps" class="hidden mt-2 text-xs text-rose-400 space-y-1.5 list-decimal pl-4">
+          <li>打開「捷徑」App → ＋ → 新增動作「<b>文字</b>」，內容貼上上面那段，後面接「<b>捷徑輸入</b>」</li>
+          <li>再加一個動作「<b>打開 URL</b>」，帶入上一步的文字</li>
+          <li>捷徑設定裡打開「<b>在分享工作表中顯示</b>」，接受類型勾 <b>URL 與文字</b></li>
+        </ol>
+        <!-- v3.1 誠實提示（DDR-32）：捷徑存得到連結、存不到內容,文案不得暗示裝了就能自動解析 IG -->
+        <p class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-2.5 mt-3 leading-relaxed">
+          <b>IG 分享只給得到連結，給不到貼文內容。</b>所以按完「存到櫻旅」之後，面板還是會請你<b>截一張把說明文字展開的圖</b>——櫻旅是從那張圖上讀店名的。<br/>
+          捷徑省掉的是<b>切 App 和貼連結</b>，不是解析。
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===================== C-05 BottomNav（6 格） ===================== -->
+  <nav id="nav" class="fixed bottom-0 inset-x-0 z-20 bg-white/90 backdrop-blur border-t border-pink-100" style="padding-bottom:env(safe-area-inset-bottom)">
+    <!-- 硬性：class 必須是明確字面值 grid-cols-6，不得用 grid-cols-${n} -->
+    <div class="max-w-2xl mx-auto grid grid-cols-6">
+      <button data-go="trip"    class="navbtn flex flex-col items-center gap-0.5 py-2.5 text-rose-300"><span>📅</span><span class="text-[11px]">行程</span></button>
+      <button data-go="money"   class="navbtn flex flex-col items-center gap-0.5 py-2.5 text-rose-300"><span>💰</span><span class="text-[11px]">帳本</span></button>
+      <button data-go="lists"   class="navbtn flex flex-col items-center gap-0.5 py-2.5 text-rose-300"><span>✅</span><span class="text-[11px]">清單</span></button>
+      <button data-go="album"   class="navbtn flex flex-col items-center gap-0.5 py-2.5 text-rose-300"><span>🖼</span><span class="text-[11px]">相簿</span></button>
+      <button data-go="places"  class="navbtn flex flex-col items-center gap-0.5 py-2.5 text-rose-500"><span>🔖</span><span class="text-[11px]">口袋</span></button>
+      <button data-go="setting" class="navbtn flex flex-col items-center gap-0.5 py-2.5 text-rose-300"><span>⚙️</span><span class="text-[11px]">設定</span></button>
+    </div>
+  </nav>
+
+  <!-- ===================== 原型控制列（非正式 UI） ===================== -->
+  <div class="fixed top-16 right-2 z-30 flex flex-col gap-1 items-end">
+    <button id="simToggle" class="text-[10px] bg-rose-400 text-white rounded-full px-2.5 py-1 shadow" aria-expanded="false">原型控制 ▾</button>
+    <div id="simPanel" class="hidden flex flex-col gap-1 items-end bg-white/95 border border-pink-200 rounded-xl p-2 shadow">
+    <button id="simEmpty"    class="text-[10px] bg-white/90 border border-pink-200 rounded px-2 py-1 shadow">空狀態 S-01</button>
+    <button id="simFail"     class="text-[10px] bg-white/90 border border-pink-200 rounded px-2 py-1 shadow">解析失敗：關</button>
+    <button id="simOffline"  class="text-[10px] bg-white/90 border border-pink-200 rounded px-2 py-1 shadow">模擬離線</button>
+    <button id="simCapacity" class="text-[10px] bg-white/90 border border-pink-200 rounded px-2 py-1 shadow">容量將滿 F-76</button>
+    <button id="simFailSync" class="text-[10px] bg-white/90 border border-pink-200 rounded px-2 py-1 shadow">同步失敗 F-77</button>
+    <button id="simShareIg"  class="text-[10px] bg-rose-100 border border-rose-300 text-rose-600 rounded px-2 py-1 shadow">貼 IG 連結 → S-20</button>
+    <button id="simShare"     class="text-[10px] bg-white/90 border border-pink-200 rounded px-2 py-1 shadow">?share=（捷徑）F-83</button>
+    <button id="simShareTh"   class="text-[10px] bg-white/90 border border-pink-200 rounded px-2 py-1 shadow">貼 Threads 連結 → S-10</button>
+    </div>
+  </div>
+
+  <!-- ===================== C-19 IngestSheet ===================== -->
+  <div id="ingest" class="hidden fixed inset-0 z-40" role="dialog" aria-modal="true" aria-label="收藏一則貼文">
+    <div class="absolute inset-0 bg-black/30" onclick="closeIngest()"></div>
+    <div class="sheet-panel absolute bottom-0 inset-x-0 bg-white rounded-t-3xl max-w-2xl mx-auto flex flex-col" style="max-height:90vh">
+
+      <!-- 標題列 -->
+      <div class="flex items-center gap-2 px-5 pt-4 pb-2 shrink-0">
+        <button id="backToInput" class="hidden text-rose-400 text-sm" onclick="ingestStep('input')">‹ 改一下輸入</button>
+        <h2 id="ingestTitle" class="font-bold text-rose-500 flex-1">收藏一則貼文</h2>
+        <button onclick="closeIngest()" aria-label="關閉" class="text-rose-300 w-11 h-11 grid place-items-center -mr-2">✕</button>
+      </div>
+
+      <!-- 離線橫幅 S-14 -->
+      <div id="ingestOffline" class="hidden bg-amber-100 text-amber-700 text-xs px-5 py-2 shrink-0 leading-relaxed">
+        📴 現在離線，先幫你存起來，回到網路再解析。
+        <span id="offlineShotWarn" class="hidden block"><b>截圖沒辦法離線保存</b>，回到網路後請再選一次。</span>
+      </div>
+
+      <div class="px-5 pb-3 overflow-y-auto flex-1">
+
+        <!-- ---------- 步驟一：輸入 ---------- -->
+        <!-- v3.1：依平台分流。一個面板、一組欄位、兩種排列（ui-spec §6.1.0 / DDR-25、DDR-26） -->
+        <!--   S-10 一般模式：① 連結  ② 貼文文字  ③ 截圖（次要）                                -->
+        <!--   S-20 IG 模式  ：① 提示條 ② 截圖（首選） ③ 來源列 ④ 貼文文字（選填折疊）           -->
+        <!-- 順序以 flex order 切換,不重建 DOM（避免 iOS Safari 收鍵盤,見 ui-spec §8）           -->
+        <div id="stepInput" class="flex flex-col">
+
+          <!-- 失敗訊息條 S-13（一般） / S-21（IG）：兩種模式都排在最前 -->
+          <div id="failNote" class="hidden bg-amber-50 border border-amber-200 text-amber-700 rounded-xl p-2.5 text-xs mb-3" role="alert" style="order:0"></div>
+
+          <!-- IG 提示條（S-20，只在 IG 模式且未失敗時出現） -->
+          <div id="igNotice" class="hidden bg-amber-50 border border-amber-200 text-amber-700 rounded-xl p-2.5 text-xs mb-3 leading-relaxed" role="status" aria-live="polite" style="order:1">
+            <b>Instagram 的內文櫻旅讀不到。</b>連結被登入牆擋住，caption 也沒辦法長按複製。<br/>
+            <b>請截一張把說明文字展開的圖</b>，我從圖上讀店名。
+          </div>
+
+          <!-- C-30 ShotPicker：emphasis 依模式切換（primary / secondary） -->
+          <div id="blkShot" class="mb-3" style="order:4">
+            <div id="shotDivider" class="flex items-center gap-2 mb-3"><span class="h-px flex-1 bg-pink-100"></span><span class="text-[11px] text-rose-300">或</span><span class="h-px flex-1 bg-pink-100"></span></div>
+            <div class="flex items-center gap-2">
+              <button id="shotPicker" aria-label="選擇截圖"
+                class="flex-1 border border-dashed border-pink-200 text-rose-300 rounded-xl py-2 text-sm">📷 或選截圖</button>
+              <div id="shotThumb" class="hidden shrink-0 w-10 h-10 rounded-xl bg-pink-100 border border-pink-200 grid place-items-center text-[10px] text-rose-400 relative">
+                圖<button onclick="clearShot()" aria-label="移除截圖" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-400 text-white text-[10px] grid place-items-center">✕</button>
+              </div>
+            </div>
+            <!-- 截圖指引（硬性：必須具體到「展開後的 caption 或字幕」，IG 模式才顯示） -->
+            <div id="shotGuide" class="hidden mt-2 text-[11px] text-rose-400 leading-relaxed">
+              <div class="font-medium text-rose-500">要截「有字的那一張」，不是食物特寫。</div>
+              <div>・貼文：先點 caption 的「<b>更多</b>」把整段展開，再截</div>
+              <div>・Reels／影片：截<b>有字幕、或有說明文字</b>的那一秒</div>
+              <div>・只有食物或風景畫面的圖<b>認不出店名</b>，多半會解析失敗</div>
+            </div>
+          </div>
+
+          <!-- 主欄 ①：貼文連結（IG 模式收合成 #srcRow，仍可展開改） -->
+          <div id="blkUrl" class="mb-3" style="order:2">
+            <label class="text-xs text-rose-400 font-medium" for="fUrl">貼文連結</label>
+            <input id="fUrl" inputmode="url" placeholder="貼上 IG／Threads／小紅書／TikTok／YouTube 連結"
+              class="w-full bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm text-rose-900 placeholder-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-200 mt-1"/>
+          </div>
+
+          <!-- IG 模式的來源列（DDR-28：連結是來源存證,收合但不移除） -->
+          <div id="srcRow" class="hidden mb-3" style="order:5">
+            <div class="flex items-center gap-2 bg-pink-50 border border-pink-100 rounded-xl px-3 py-2">
+              <span class="shrink-0 text-rose-300">🔗</span>
+              <span id="srcText" class="flex-1 min-w-0 truncate text-xs text-rose-700"></span>
+              <button id="editUrl" class="shrink-0 text-xs text-purple-500 underline">改連結</button>
+            </div>
+            <p class="text-[10px] text-rose-300 mt-1">連結會存成來源，之後想回去看原貼文靠它。</p>
+          </div>
+
+          <!-- 主欄 ②：貼文文字（IG 模式降為選填,折疊） -->
+          <div id="blkText" class="mb-1" style="order:3">
+            <button id="textToggle" class="hidden text-xs text-purple-500 mb-1">如果你複製得到文字（選填） ▾</button>
+            <div id="textBody">
+              <label id="textLabel" class="text-xs text-rose-400 font-medium" for="fText">貼文文字</label>
+              <textarea id="fText" rows="4" placeholder="長按貼文 → 拷貝，把提到店名的那段貼進來"
+                class="w-full bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm text-rose-900 placeholder-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-200 mt-1"></textarea>
+              <p id="textHint" class="text-[11px] text-rose-300 mt-1 leading-relaxed">Threads、小紅書、YouTube 的說明文字通常複製得到，貼過來成功率最高。<b class="text-rose-400">Instagram 複製不了，貼連結我會請你改用截圖。</b></p>
+            </div>
+          </div>
+
+          <!-- 解析中骨架 S-11 -->
+          <div id="skeleton" class="hidden mt-4 space-y-2" aria-busy="true" style="order:9">
+            <div class="h-9 rounded-xl bg-pink-100 animate-pulse"></div>
+            <div class="h-9 rounded-xl bg-pink-100 animate-pulse"></div>
+            <div class="h-9 rounded-xl bg-pink-100 animate-pulse"></div>
+          </div>
+        </div>
+
+        <!-- ---------- 步驟二：覆核 S-12（F-72） ---------- -->
+        <div id="stepReview" class="hidden">
+          <div class="text-[11px] text-rose-300 mb-2 truncate">來源：instagram.com/reel/C8xk2… <span class="text-rose-200">（via text）</span></div>
+          <label class="text-xs text-rose-400 font-medium" for="colTitle">貼文主題</label>
+          <input id="colTitle" value="福岡三日必吃美食"
+            class="w-full bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm mt-1 mb-1 focus:outline-none focus:ring-2 focus:ring-rose-200"/>
+          <p class="text-[11px] text-rose-300 mb-3">在地人推薦的中洲屋台與拉麵</p>
+          <ul id="reviewList" role="list" class="space-y-1.5"></ul>
+          <p class="text-[11px] text-rose-300 mt-3">未勾選的不會存進來。低信心與已存過的預設不勾。</p>
+        </div>
+      </div>
+
+      <!-- 底部固定主按鈕 -->
+      <div class="px-5 pt-2 shrink-0 border-t border-pink-50 bg-white rounded-b-none"
+           style="padding-bottom:calc(1.25rem + env(safe-area-inset-bottom))">
+        <div id="blockNote" class="hidden bg-rose-50 border border-rose-200 text-rose-600 rounded-xl p-2.5 text-xs mb-2">
+          空間不夠了，這批存不進去。先取消勾選幾筆，或去清單頁刪些相片。
+        </div>
+        <button id="ingestBtn" class="w-full bg-rose-400 hover:bg-rose-500 text-white rounded-xl py-2.5 text-sm font-medium">解析看看</button>
+        <!-- DDR-27 逃生口：只在 IG 模式出現,避免平台判定誤判把人鎖死 -->
+        <button id="forceLink" class="hidden w-full text-[11px] text-rose-300 underline mt-2">還是先試試這個連結</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== C-23 PlaceSheet ===================== -->
+  <div id="placeSheet" class="hidden fixed inset-0 z-40" role="dialog" aria-modal="true" aria-label="地點詳情">
+    <div class="absolute inset-0 bg-black/30" onclick="tryClosePlaceSheet()"></div>
+    <div class="sheet-panel absolute bottom-0 inset-x-0 bg-white rounded-t-3xl max-w-2xl mx-auto p-5 overflow-y-auto" style="max-height:90vh;padding-bottom:calc(1.25rem + env(safe-area-inset-bottom))">
+      <div class="flex items-center gap-2 mb-3">
+        <span id="psTag" class="text-[11px] rounded-md px-1.5 py-0.5 bg-amber-100 text-amber-600">🍜 美食</span>
+        <h2 id="psTitle" class="font-bold text-rose-500 flex-1 truncate">一蘭拉麵 福岡總本店</h2>
+        <button onclick="tryClosePlaceSheet()" aria-label="關閉" class="text-rose-300 w-11 h-11 grid place-items-center -mr-2">✕</button>
+      </div>
+
+      <label class="text-xs text-rose-400">店名</label>
+      <input id="psName" class="ps-edit w-full bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm mt-1 mb-3 focus:outline-none focus:ring-2 focus:ring-rose-200"/>
+      <label class="text-xs text-rose-400">類別</label>
+      <select id="psCat" class="ps-edit w-full bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm mt-1 mb-3">
+        <option value="spot">景點</option><option value="food">美食</option><option value="shop">購物</option>
+        <option value="move">交通</option><option value="stay">住宿</option><option value="other">其他</option>
+      </select>
+      <label class="text-xs text-rose-400">區域</label>
+      <input id="psArea" class="ps-edit w-full bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-rose-200"/>
+      <p id="psJa" class="text-[11px] text-rose-300 mt-1 mb-3">日文名：一蘭 福岡本社総本店</p>
+      <label class="text-xs text-rose-400">備註</label>
+      <textarea id="psNote" rows="3" class="ps-edit w-full bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-sm mt-1 mb-3 focus:outline-none focus:ring-2 focus:ring-rose-200"></textarea>
+
+      <div class="flex gap-2 mb-2">
+        <button onclick="alert('（原型）openMap(name + area)')" class="flex-1 border border-pink-200 text-sky-500 rounded-xl py-2 text-sm">📍 在地圖搜尋</button>
+        <button onclick="hide('placeSheet');openDayPicker(currentPlace)" class="flex-1 border border-pink-200 text-rose-400 rounded-xl py-2 text-sm">＋ 加入行程</button>
+      </div>
+      <p class="text-[11px] text-rose-300 leading-relaxed mb-4">在 Google 地圖上按它自己的「儲存」，可以放進<b>你自己的</b> Google 清單。櫻旅讀不到那份清單，兩邊不會互通。</p>
+
+      <div id="psDirty" class="hidden text-[11px] text-amber-600 mb-1">有未儲存的變更</div>
+      <button id="psSave" class="w-full bg-rose-400 hover:bg-rose-500 text-white rounded-xl py-2.5 text-sm font-medium">儲存</button>
+      <button onclick="confirmSheet({title:'確定要刪除這個地點嗎？'})" class="w-full text-rose-400 text-xs mt-3">刪除這個地點</button>
+    </div>
+  </div>
+
+  <!-- ===================== C-24 DayPickerSheet（本版賣點） ===================== -->
+  <div id="dayPicker" class="hidden fixed inset-0 z-40" role="dialog" aria-modal="true" aria-label="選擇日期">
+    <div class="absolute inset-0 bg-black/30" onclick="hide('dayPicker')"></div>
+    <div class="sheet-panel absolute bottom-0 inset-x-0 bg-white rounded-t-3xl max-w-2xl mx-auto p-5" style="padding-bottom:calc(1.25rem + env(safe-area-inset-bottom))">
+      <h2 class="font-bold text-rose-500 mb-1">把「<span id="dpName">一蘭拉麵 福岡總本店</span>」排到哪一天？</h2>
+      <p class="text-xs text-rose-400 mb-3">標了「建議」的是<b>當天正好在這個區域</b>的日子。順序維持行程原本的順序。</p>
+      <div id="dayList" class="space-y-1.5 overflow-y-auto" style="max-height:60vh"></div>
+      <div id="dayEmpty" class="hidden text-center py-6">
+        <div class="text-3xl mb-2">🗓</div>
+        <p class="text-xs text-rose-400 mb-3">這份行程還沒有日期。<br/>先到「行程」頁設好出發／回程，按「產生每日卡片」。</p>
+        <button onclick="hide('dayPicker');go('trip')" class="bg-rose-400 text-white rounded-xl px-4 py-2 text-sm">去行程頁</button>
+      </div>
+      <button onclick="hide('dayPicker')" class="w-full text-rose-400 text-sm mt-3 py-2">取消</button>
+    </div>
+  </div>
+
+  <!-- ============ C-16 ConfirmSheet（v3.1 增修：新增「選填」subtitle prop） ============ -->
+  <!-- 預設 subtitle ＝ 現有硬寫的刪除警告 → 既有 4 個呼叫點不用改（DDR-30）           -->
+  <div id="confirmSheet" class="hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="確認">
+    <div class="absolute inset-0 bg-black/30" onclick="hide('confirmSheet')"></div>
+    <div class="sheet-panel absolute bottom-0 inset-x-0 bg-white rounded-t-3xl max-w-2xl mx-auto p-5" style="padding-bottom:calc(1.25rem + env(safe-area-inset-bottom))">
+      <h2 id="cfTitle" class="font-bold text-rose-500 mb-1">確定要刪除嗎？</h2>
+      <p id="cfSub" class="text-xs text-rose-400 mb-4">刪除後旅伴端也會一併移除，無法復原。</p>
+      <button id="cfOk" class="w-full bg-rose-400 hover:bg-rose-500 text-white rounded-xl py-2.5 text-sm font-medium">刪除</button>
+      <button onclick="hide('confirmSheet')" class="w-full text-rose-400 text-sm mt-2 py-2">取消</button>
+    </div>
+  </div>
+
+  <!-- C-29 Toast（落位 src/components/ui.jsx，不另開新檔；PRD §6.2 裁定） -->
+  <div id="toast" class="hidden fixed left-1/2 -translate-x-1/2 bottom-24 z-50 toast bg-rose-500 text-white text-xs rounded-full px-4 py-2 shadow-lg flex items-center gap-2"></div>
+</div>
+
+<script>
+/* ------------------------------------------------------------------ */
+/* 資料（原型用假資料）                                                 */
+/* ------------------------------------------------------------------ */
+const TYPES = {
+  spot:{label:"景點", ico:"📍", c:"bg-purple-100 text-purple-600"},
+  food:{label:"美食", ico:"🍜", c:"bg-amber-100 text-amber-600"},
+  shop:{label:"購物", ico:"🛍", c:"bg-pink-100 text-pink-600"},
+  move:{label:"交通", ico:"🚉", c:"bg-sky-100 text-sky-600"},
+  stay:{label:"住宿", ico:"🛏", c:"bg-rose-100 text-rose-600"},
+  other:{label:"其他", ico:"✨", c:"bg-gray-100 text-gray-500"},
+};
+
+// 行程天數（順序即行程原順序，永遠不因建議而重排）
+const DAYS = [
+  {id:"d1", n:1, date:"6月10日 週三", city:"大分・由布院", count:3},
+  {id:"d2", n:2, date:"6月11日 週四", city:"福岡",        count:2},
+  {id:"d3", n:3, date:"6月12日 週五", city:"博多",        count:0},
+  {id:"d4", n:4, date:"6月13日 週六", city:"",            count:1},
+  {id:"d5", n:5, date:"6月14日 週日", city:"那霸",        count:4},
+];
+
+// 已存在口袋的地點（用來示範「已存過」badge）
+const SAVED_NAMES = new Set(["博多一口餃子 テムジン"]);
+
+// 解析回傳（示範一次解析出 4 個地點，含低信心與已存過）
+const PARSED = [
+  {name:"一蘭拉麵 福岡總本店", nameJa:"一蘭 福岡本社総本店", cat:"food", area:"福岡 中洲川端", note:"24小時營業，豚骨拉麵名店，建議避開用餐尖峰", conf:0.92},
+  {name:"中洲屋台 小金ちゃん",  nameJa:"小金ちゃん",         cat:"food", area:"福岡 中洲",     note:"炒拉麵發源屋台，18:30 開始排隊",           conf:0.81},
+  {name:"博多一口餃子 テムジン", nameJa:"テムジン 大名店",    cat:"food", area:"福岡 大名",     note:"一口煎餃，配啤酒",                          conf:0.88},
+  {name:"かろのうろん",         nameJa:"",                   cat:"food", area:"福岡",          note:"百年烏龍麵老店，名稱抄自貼文可能有誤",       conf:0.42},
+];
+
+let pockets = [];      // 已收藏的貼文
+let placeSeq = 0;
+let currentPlace = null;
+let simFail = false, offline = false, shotPicked = false;
+
+/* ------------------------------------------------------------------ */
+/* 通用                                                                */
+/* ------------------------------------------------------------------ */
+const $ = id => document.getElementById(id);
+const show = id => $(id).classList.remove('hidden');
+const hide = id => $(id).classList.add('hidden');
+function toast(msg, action){
+  const t = $('toast');
+  t.innerHTML = msg + (action ? ` <button class="underline" onclick="${action}">去看看</button>` : '');
+  show('toast'); clearTimeout(t._t); t._t = setTimeout(()=>hide('toast'), 2600);
+}
+function go(tab){
+  document.querySelectorAll('[data-tab]').forEach(s=>s.classList.toggle('hidden', s.dataset.tab!==tab));
+  document.querySelectorAll('.navbtn').forEach(b=>{
+    b.className = b.className.replace(/text-rose-\d00/, b.dataset.go===tab ? 'text-rose-500' : 'text-rose-300');
+  });
+}
+document.querySelectorAll('.navbtn').forEach(b=>b.onclick=()=>go(b.dataset.go));
+
+/* ------------------------------------------------------------------ */
+/* suggestDays：純字串比對，零 API（PRD §6.3）                          */
+/* ------------------------------------------------------------------ */
+const ALIAS = [["福岡","博多","fukuoka"],["那霸","沖繩","naha","okinawa"],["由布院","湯布院","yufuin"]];
+const norm = s => (s||"").trim().toLowerCase().replace(/\s+/g,"");
+function sameCity(a,b){
+  a = norm(a); b = norm(b);
+  if(!a || !b) return false;                       // 任一為空 → 不建議、不擋
+  if(a.includes(b) || b.includes(a)) return true;
+  return ALIAS.some(g => g.some(x=>a.includes(norm(x))) && g.some(x=>b.includes(norm(x))));
+}
+function suggestDays(area){ return DAYS.filter(d=>sameCity(area, d.city)).map(d=>d.id); }
+
+/* ------------------------------------------------------------------ */
+/* C-19 IngestSheet                                                    */
+/* ------------------------------------------------------------------ */
+/* 平台判定（ui-spec §6.1.0）：必須解析 hostname,不得用 url.includes("instagram.com")
+   否則 https://example.com/?ref=instagram.com 會被誤判成 IG */
+function detectPlatform(raw){
+  const t = (raw || "").trim();
+  if(!t) return "";
+  try{
+    const h = new URL(/^https?:\/\//i.test(t) ? t : "https://" + t).hostname.toLowerCase();
+    if(/(^|\.)instagram\.com$/.test(h))                  return "instagram";
+    if(/(^|\.)threads\.(net|com)$/.test(h))              return "threads";
+    if(/(^|\.)(xiaohongshu\.com|xhslink\.com)$/.test(h)) return "xiaohongshu";
+    if(/(^|\.)tiktok\.com$/.test(h))                     return "tiktok";
+    if(/(^|\.)(youtube\.com|youtu\.be)$/.test(h))        return "youtube";
+  }catch(e){ /* 解析失敗（只貼了一段文字）→ other,不切模式 */ }
+  return "other";
+}
+
+let mode = 'general';      // 'general'（S-10） | 'ig'（S-20）
+let urlExpanded = false;   // IG 模式下連結欄是否展開回可編輯
+let textExpanded = true;   // 貼文文字欄是否展開（IG 模式預設收合）
+let failVisible = false;
+
+/* ---- 依平台切換版面（DDR-25 / DDR-26）：只換順序與強調,不動欄位內容、不移動焦點 ---- */
+function applyMode(){
+  const next = detectPlatform($('fUrl').value) === 'instagram' ? 'ig' : 'general';
+  const changed = next !== mode;
+  mode = next;
+  // 切到 IG 模式時把文字欄收合,但「已經打了字就不收」——收起來會讓使用者以為內容不見了
+  if(changed){ urlExpanded = false; textExpanded = (mode === 'general') || !!$('fText').value.trim(); }
+  const ig = mode === 'ig';
+
+  // 順序（flex order）：IG = 提示條 → 截圖 → 來源列 → 文字；一般 = 連結 → 文字 → 截圖
+  $('igNotice').style.order = 1;
+  $('blkShot').style.order  = ig ? 2 : 4;
+  $('blkUrl').style.order   = ig ? 3 : 2;
+  $('srcRow').style.order   = 3;
+  $('blkText').style.order  = ig ? 6 : 3;
+
+  // 顯示／隱藏
+  $('igNotice').classList.toggle('hidden', !ig || failVisible);   // 失敗訊息優先,不與提示條疊在一起
+  $('shotDivider').classList.toggle('hidden', ig);
+  $('shotGuide').classList.toggle('hidden', !ig);
+  $('srcRow').classList.toggle('hidden', !ig || urlExpanded);
+  $('blkUrl').classList.toggle('hidden', ig && !urlExpanded);
+  $('textToggle').classList.toggle('hidden', !ig);
+  $('textBody').classList.toggle('hidden', ig && !textExpanded);
+  $('forceLink').classList.toggle('hidden', !ig);
+  $('textToggle').textContent = '如果你複製得到文字（選填） ' + (textExpanded ? '▴' : '▾');
+
+  // 來源列（DDR-28：連結是來源存證,收合但不移除）
+  const u = $('fUrl').value.trim();
+  $('srcText').textContent = u.replace(/^https?:\/\//i, '');
+
+  // C-30 ShotPicker：emphasis primary / secondary
+  const sp = $('shotPicker');
+  sp.className = ig
+    ? 'flex-1 min-h-24 bg-rose-50 border-2 border-rose-300 text-rose-600 rounded-2xl py-5 text-sm font-medium'
+    : 'flex-1 border border-dashed border-pink-200 text-rose-300 rounded-xl py-2 text-sm';
+  sp.innerHTML = ig ? '📷<span class="block mt-1">選一張截圖</span>' : '📷 或選截圖';
+
+  syncBtnState();
+}
+
+function openIngest(prefill){
+  const pre = typeof prefill === 'string' ? {url: prefill} : (prefill || {});
+  show('ingest');
+  failVisible = false;
+  $('failNote').classList.add('hidden');
+  $('fUrl').value  = pre.url  || '';
+  $('fText').value = pre.text || '';
+  shotPicked = false; hide('shotThumb');
+  ingestStep('input');
+  $('ingestOffline').classList.toggle('hidden', !offline);
+  refreshOfflineWarn();
+  // 平台判定在開啟當下就跑：走捷徑帶進來的 IG 連結,一眼看到的就是截圖區（ui-spec §6.0）
+  applyMode();
+  // IG 模式不自動聚焦連結欄——鍵盤會蓋掉截圖區,而截圖才是這一步的主角
+  if(mode === 'general') setTimeout(()=>$('fUrl').focus(), 50);
+}
+function closeIngest(){ hide('ingest'); }
+
+function ingestStep(step){
+  $('stepInput').classList.toggle('hidden', step!=='input');
+  $('stepReview').classList.toggle('hidden', step!=='review');
+  $('backToInput').classList.toggle('hidden', step!=='review');
+  $('ingestTitle').textContent = step==='review' ? '確認要存哪幾個' : '收藏一則貼文';
+  $('skeleton').classList.add('hidden');
+  $('blockNote').classList.add('hidden');
+  $('forceLink').classList.toggle('hidden', step!=='input' || mode!=='ig');
+  if(step==='review'){
+    renderReview();
+    $('ingestBtn').onclick = commitReview;
+  }else{
+    applyMode();     // 回到輸入步驟時回到原本的模式（不清空、不重置）
+  }
+}
+
+/* 主按鈕狀態（ui-spec §6.1.1b 驗證規則 + DDR-27） */
+function syncBtnState(){
+  const b = $('ingestBtn');
+  const url = $('fUrl').value.trim(), txt = $('fText').value.trim();
+  const hasContent = !!(txt || shotPicked);
+  const setBtn = (label, enabled, handler) => {
+    b.textContent = label;
+    b.disabled = !enabled;
+    b.className = 'w-full rounded-xl py-2.5 text-sm font-medium text-white ' + (enabled ? 'bg-rose-400 hover:bg-rose-500' : 'bg-slate-300 cursor-not-allowed');
+    b.setAttribute('aria-disabled', String(!enabled));
+    b.onclick = enabled ? handler : null;
+  };
+  if(offline){ setBtn('先存起來', !!(url || hasContent), saveOffline); return; }
+  // DDR-27：IG 模式只有連結時,不送出註定失敗的請求,主按鈕直接變成「選擇截圖」
+  if(mode === 'ig' && !hasContent){ setBtn('選擇截圖', true, pickShot); return; }
+  setBtn('解析看看', !!(url || hasContent), () => runParse(false));
+}
+
+$('fUrl').oninput = applyMode;          // 即時判定,無 debounce,且不移動焦點
+$('fText').oninput = syncBtnState;
+$('editUrl').onclick = () => { urlExpanded = true; applyMode(); $('fUrl').focus(); };
+$('textToggle').onclick = () => { textExpanded = !textExpanded; applyMode(); };
+$('forceLink').onclick = () => runParse(true);
+
+function pickShot(){ shotPicked = true; show('shotThumb'); refreshOfflineWarn(); syncBtnState(); }
+$('shotPicker').onclick = pickShot;
+function clearShot(){ shotPicked = false; hide('shotThumb'); refreshOfflineWarn(); syncBtnState(); }
+function refreshOfflineWarn(){ $('offlineShotWarn').classList.toggle('hidden', !(offline && shotPicked)); }
+
+/* S-14 離線：只存得下文字（sourceUrl + rawText + pending）,圖片 bytes 絕不進 trip jsonb */
+function saveOffline(){
+  const url = $('fUrl').value.trim(), txt = $('fText').value.trim();
+  pockets.unshift({
+    pending:true, title:"待解析",
+    platform: detectPlatform(url) || 'other',
+    sourceUrl: url, rawText: txt,
+    src: (txt || url || "（截圖，未保存）").slice(0,40),
+    places: []
+  });
+  closeIngest(); renderPockets();
+  toast(shotPicked ? '已存成「待解析」；截圖沒保存，回線後請再選一次' : '已存成「待解析」，回到網路再解析');
+}
+
+function runParse(force){
+  if(offline){ saveOffline(); return; }
+  failVisible = false; $('failNote').classList.add('hidden'); applyMode();
+  // S-11 解析中：欄位維持可見、readOnly、不清空；截圖選擇器一併鎖住
+  const b = $('ingestBtn');
+  b.disabled = true; b.textContent = '⟳ 解析中…';
+  b.className = 'w-full rounded-xl py-2.5 text-sm font-medium text-white bg-rose-400 opacity-70';
+  ['fUrl','fText'].forEach(id=>{ $(id).readOnly = true; $(id).classList.add('opacity-60'); });
+  $('blkShot').classList.add('opacity-60','pointer-events-none');
+  show('skeleton');
+
+  setTimeout(()=>{
+    ['fUrl','fText'].forEach(id=>{ $(id).readOnly = false; $(id).classList.remove('opacity-60'); });
+    $('blkShot').classList.remove('opacity-60','pointer-events-none');
+    $('skeleton').classList.add('hidden');
+    // 只帶 IG 連結硬送（force）→ 必定落到 need_text_or_image（PRD §7.2 機房 IP 撞登入牆）
+    if(force && mode === 'ig' && !($('fText').value.trim() || shotPicked)){ showFail('need_text_or_image'); return; }
+    if(simFail){ showFail('need_text_or_image'); } else { ingestStep('review'); }
+  }, 1200);
+}
+
+/* S-13（一般） / S-21（IG）解析失敗：不換頁、不清空,焦點送到「這個平台真的做得到」的那一欄 */
+const FAIL_MSG = {
+  general: {
+    need_text_or_image: '這個連結<b>讀不到內文</b>。請長按貼文 → 拷貝，把<b>寫店名的那段文字</b>貼在下面。',
+    no_places:          '這段內容裡我找不到具體的店名或景點。再多貼一點文字試試，或直接自己新增。',
+    too_large:          '這張截圖太大了，換一張或改貼文字。',
+    rate_limited:       '剛剛解析太多次了，等幾分鐘再試。你貼的內容還留著。',
+  },
+  ig: {
+    need_text_or_image: '<b>讀不到，IG 一定是這樣。</b>請截一張<b>把說明文字展開</b>的圖（影片就截有字幕的那一幕）再試一次。',
+    no_places:          '這張圖上我找不到店名，<b>多半是截到食物畫面</b>。把 caption 點「更多」展開後再截一張。',
+    too_large:          '這張截圖太大了，換一張或改貼文字。',
+    rate_limited:       '剛剛解析太多次了，等幾分鐘再試。你貼的內容還留著。',
+  }
+};
+function showFail(reason){
+  failVisible = true;
+  const n = $('failNote');
+  n.innerHTML = FAIL_MSG[mode === 'ig' ? 'ig' : 'general'][reason]
+    + ' <button class="underline block mt-1" onclick="ingestStep(\'review\')">自己輸入一個地點</button>';
+  n.classList.remove('hidden');
+  applyMode();                       // 讓 IG 提示條讓位給失敗訊息
+  if(mode === 'ig'){
+    $('shotPicker').focus();         // S-21：聚焦截圖選擇器,不是文字欄
+    $('blkShot').scrollIntoView({block:'center', behavior:'smooth'});
+  }else{
+    $('fText').focus();              // S-13：聚焦貼文文字欄
+    $('fText').scrollIntoView({block:'center', behavior:'smooth'});
+  }
+}
+
+/* ---------- C-20 ReviewRow（F-72） ---------- */
+function renderReview(){
+  const ul = $('reviewList'); ul.innerHTML = '';
+  PARSED.forEach((p, i) => {
+    const low = p.conf < 0.6;
+    const dup = SAVED_NAMES.has(p.name);
+    const checked = !low && !dup;                       // T-81 預設勾選規則
+    const t = TYPES[p.cat];
+    const li = document.createElement('li');
+    li.className = 'rounded-xl p-2.5 border ' + (low ? 'bg-amber-50 border-amber-200' : 'bg-pink-50 border-transparent');
+    li.innerHTML = `
+      <div class="flex items-start gap-2">
+        <input type="checkbox" data-i="${i}" ${checked?'checked':''} aria-label="選取 ${p.name}"
+          class="rv shrink-0 w-6 h-6 accent-rose-400 mt-0.5"/>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-1 flex-wrap">
+            <span class="text-[11px] rounded-md px-1.5 py-0.5 ${t.c}">${t.ico} ${t.label}</span>
+            ${low ? '<span class="text-[11px] text-amber-700 font-medium">名稱可能不準</span>' : ''}
+            ${dup ? '<span class="text-[11px] rounded-full px-2 py-0.5 bg-slate-100 text-slate-500">已存過</span>' : ''}
+          </div>
+          <div class="text-sm font-medium break-words mt-0.5">${p.name}</div>
+          <div class="text-xs text-rose-400">${p.area}</div>
+          <div class="rv-more hidden mt-2 space-y-1.5">
+            <input value="${p.name}" class="w-full bg-white border border-pink-100 rounded-lg px-2 py-1.5 text-xs" aria-label="店名"/>
+            <select class="w-full bg-white border border-pink-100 rounded-lg px-2 py-1.5 text-xs" aria-label="類別">
+              ${Object.entries(TYPES).map(([k,v])=>`<option value="${k}" ${k===p.cat?'selected':''}>${v.label}</option>`).join('')}
+            </select>
+            <input value="${p.area}" placeholder="城市／區域，例：福岡 中洲川端" class="w-full bg-white border border-pink-100 rounded-lg px-2 py-1.5 text-xs" aria-label="區域"/>
+            <input value="${p.note}" class="w-full bg-white border border-pink-100 rounded-lg px-2 py-1.5 text-xs" aria-label="備註"/>
+          </div>
+        </div>
+        <button class="rv-toggle text-rose-300 w-9 h-9 grid place-items-center shrink-0 -my-1" aria-label="展開編輯">▾</button>
+      </div>`;
+    ul.appendChild(li);
+  });
+  ul.querySelectorAll('.rv').forEach(c => c.onchange = updateCount);
+  ul.querySelectorAll('.rv-toggle').forEach(b => b.onclick = () => {
+    const m = b.closest('li').querySelector('.rv-more');
+    m.classList.toggle('hidden'); b.textContent = m.classList.contains('hidden') ? '▾' : '▴';
+  });
+  updateCount();
+}
+function updateCount(){
+  const n = document.querySelectorAll('#reviewList .rv:checked').length;
+  const b = $('ingestBtn');
+  b.textContent = `加入口袋 (${n})`;
+  b.disabled = n === 0;
+  b.className = 'w-full rounded-xl py-2.5 text-sm font-medium text-white ' + (n ? 'bg-rose-400 hover:bg-rose-500' : 'bg-slate-300 cursor-not-allowed');
+  b.setAttribute('aria-disabled', String(n===0));
+}
+function commitReview(){
+  const picked = [...document.querySelectorAll('#reviewList .rv:checked')].map(c => PARSED[+c.dataset.i]);
+  if(!picked.length) return;
+  // F-76：寫入前試算，超過 900KB 就擋下且不寫入
+  if($('capacity').classList.contains('hidden') === false){ show('blockNote'); return; }
+  pockets.unshift({
+    title: $('colTitle').value || '未命名收藏',
+    summary: '在地人推薦的中洲屋台與拉麵',
+    platform: detectPlatform($('fUrl').value) || 'other',
+    sourceUrl: $('fUrl').value.trim(),
+    open: true,
+    places: picked.map(p => ({...p, id:'p'+(++placeSeq), days:[]})),
+  });
+  pockets.forEach((p,i)=>{ if(i>0) p.open = false; });   // DDR-22 最新一則展開
+  closeIngest(); renderPockets();
+  toast(`已存進口袋 ${picked.length} 個地點`);
+}
+
+/* ------------------------------------------------------------------ */
+/* C-21 PocketCard + C-22 PlaceRow                                     */
+/* ------------------------------------------------------------------ */
+function renderPockets(){
+  const wrap = $('pocketList'); wrap.innerHTML = '';
+  pockets.forEach((pk, pi) => {
+    const card = document.createElement('div');
+    card.className = 'pocket-card bg-white/80 rounded-2xl border shadow-sm p-4 fade-in ' + (pk.pending ? 'border-dashed border-pink-200' : 'border-pink-100');
+
+    if(pk.pending){                                     // S-06 待解析（F-78）
+      // S-06b：來源是 IG 時,按鈕文案改成「補一張截圖再解析」
+      // 理由：離線存不下截圖,而 IG 只有截圖這條路,寫「重新解析」會讓人以為按下去就會自己跑完
+      const igPending = pk.platform === 'instagram';
+      const label = offline ? '回到網路再試' : (igPending ? '補一張截圖再解析' : '重新解析');
+      card.innerHTML = `
+        <div class="flex items-center gap-2 mb-1">
+          <span class="font-bold text-rose-400 flex-1">⏳ 待解析</span>
+        </div>
+        <div class="text-xs text-rose-300 break-all mb-1">${pk.src}</div>
+        ${igPending ? '<div class="text-[11px] text-rose-300 mb-2">來源是 Instagram，離線時存不下截圖，回線後要再選一次圖。</div>' : '<div class="mb-2"></div>'}
+        <button class="pk-retry w-full ${offline?'bg-slate-300':'bg-rose-400'} text-white rounded-xl py-2 text-sm"
+          ${offline?'disabled':''}>${label}</button>`;
+      // 重新解析：以 pocket.rawText + pocket.sourceUrl 預填（PRD §5.2 / ui-spec S-06）
+      const rb = card.querySelector('.pk-retry');
+      if(rb && !offline) rb.onclick = () => openIngest({url: pk.sourceUrl || '', text: pk.rawText || ''});
+      wrap.appendChild(card); return;
+    }
+
+    card.innerHTML = `
+      <div class="flex items-center gap-2">
+        <span class="text-rose-300 shrink-0">📷</span>
+        <h3 class="font-bold text-rose-500 flex-1 truncate">${pk.title}</h3>
+        <span class="text-xs text-rose-300 shrink-0">${pk.places.length} 個地點</span>
+        <button class="pk-toggle text-rose-300 w-9 h-9 grid place-items-center -my-1 shrink-0" aria-label="展開收合">${pk.open?'▴':'▾'}</button>
+      </div>
+      <p class="text-xs text-rose-400 mt-0.5 mb-2">${pk.summary}</p>
+      <div class="flex items-center gap-3 text-[11px] text-rose-300 mb-2">
+        <button class="underline" onclick="alert('（原型）openUrl(sourceUrl)')">開原貼文</button>
+        <button class="underline" onclick="confirmSheet({title:'確定要刪除整則收藏嗎？'})">刪除整則</button>
+      </div>
+      <div class="pk-body ${pk.open?'':'hidden'} space-y-1.5"></div>`;
+
+    const body = card.querySelector('.pk-body');
+    pk.places.forEach(pl => body.appendChild(placeRow(pl)));
+    card.querySelector('.pk-toggle').onclick = e => { pk.open = !pk.open; renderPockets(); };
+    wrap.appendChild(card);
+  });
+  $('emptyState').classList.toggle('hidden', pockets.length > 0 ? true : !emptyMode);
+  $('ingestBar').classList.toggle('hidden', pockets.length === 0 && emptyMode);
+}
+
+// C-22：視覺與 ItemRow(C-08) 同源
+function placeRow(pl){
+  const t = TYPES[pl.cat];
+  const el = document.createElement('div');
+  el.className = 'place-row flex items-start gap-1.5 bg-pink-50 rounded-xl p-2.5';
+  const added = pl.days.length
+    ? ` · <span class="rounded-full px-2 py-0.5 bg-emerald-50 text-emerald-600">已加入 ${pl.days.map(id=>'D'+DAYS.find(d=>d.id===id).n).join('、')}</span>`
+    : '';
+  el.innerHTML = `
+    <div class="flex-1 min-w-0 cursor-pointer" data-open="1">
+      <div class="flex items-center gap-1 flex-wrap">
+        <span class="text-[11px] rounded-md px-1.5 py-0.5 ${t.c}">${t.ico} ${t.label}</span>
+      </div>
+      <div class="text-sm font-medium break-words mt-0.5">${pl.name}</div>
+      <div class="text-xs text-rose-400">${pl.area}${added}</div>
+      ${pl.note ? `<div class="text-xs text-rose-400 break-words">${pl.note}</div>` : ''}
+    </div>
+    <div class="flex items-center shrink-0 -my-1">
+      <button class="text-sky-400 w-8 h-9 grid place-items-center" aria-label="地圖" title="在 Google 地圖搜尋">📍</button>
+      <button class="add text-rose-400 w-8 h-9 grid place-items-center text-lg" aria-label="加入行程" title="加入行程">＋</button>
+    </div>`;
+  el.querySelector('[data-open]').onclick = () => openPlaceSheet(pl);
+  el.querySelector('.add').onclick = () => openDayPicker(pl);
+  el.querySelector('[aria-label="地圖"]').onclick = () => alert(`（原型）openMap("${pl.name} ${pl.area}")`);
+  return el;
+}
+
+/* ------------------------------------------------------------------ */
+/* C-16 ConfirmSheet — v3.1 新增「選填」subtitle（DDR-30）              */
+/* ------------------------------------------------------------------ */
+const CONFIRM_DEFAULT_SUB = '刪除後旅伴端也會一併移除，無法復原。';
+function confirmSheet(opt){
+  $('cfTitle').textContent = opt.title || '確定嗎？';
+  // subtitle 省略 → 沿用既有硬寫字串,既有 4 個呼叫點零改動
+  $('cfSub').textContent = opt.subtitle || CONFIRM_DEFAULT_SUB;
+  const ok = $('cfOk');
+  ok.textContent = opt.okLabel || '刪除';
+  ok.onclick = () => { hide('confirmSheet'); if(opt.onOk) opt.onOk(); };
+  show('confirmSheet');
+}
+
+/* ------------------------------------------------------------------ */
+/* C-23 PlaceSheet — 明確「儲存」鈕（DDR-15）                            */
+/* ------------------------------------------------------------------ */
+function openPlaceSheet(pl){
+  currentPlace = pl;
+  const t = TYPES[pl.cat];
+  $('psTag').className = `text-[11px] rounded-md px-1.5 py-0.5 ${t.c}`;
+  $('psTag').textContent = `${t.ico} ${t.label}`;
+  $('psTitle').textContent = pl.name;
+  $('psName').value = pl.name; $('psCat').value = pl.cat; $('psArea').value = pl.area; $('psNote').value = pl.note;
+  $('psJa').textContent = pl.nameJa ? '日文名：' + pl.nameJa : '';
+  $('psJa').classList.toggle('hidden', !pl.nameJa);
+  hide('psDirty');
+  show('placeSheet');
+}
+document.querySelectorAll('.ps-edit').forEach(el => el.oninput = () => show('psDirty'));
+// S-17 未存離開：帶入 subtitle,不得沿用不相干的刪除警告
+function tryClosePlaceSheet(){
+  if($('psDirty').classList.contains('hidden')){ hide('placeSheet'); return; }
+  confirmSheet({
+    title: '要放棄修改嗎？',
+    subtitle: '這個地點剛剛改的內容不會存起來。',
+    okLabel: '放棄修改',
+    onOk: () => hide('placeSheet')
+  });
+}
+$('psSave').onclick = () => {
+  currentPlace.name = $('psName').value; currentPlace.cat = $('psCat').value;
+  currentPlace.area = $('psArea').value; currentPlace.note = $('psNote').value;
+  $('psSave').textContent = '✓ 已儲存';
+  setTimeout(()=>{ $('psSave').textContent = '儲存'; hide('placeSheet'); renderPockets(); }, 400);
+};
+
+/* ------------------------------------------------------------------ */
+/* C-24 DayPickerSheet + C-25 DayChip（F-75，本版賣點）                 */
+/* ------------------------------------------------------------------ */
+function openDayPicker(pl){
+  currentPlace = pl;
+  $('dpName').textContent = pl.name;
+  const list = $('dayList'); list.innerHTML = '';
+  $('dayEmpty').classList.toggle('hidden', DAYS.length > 0);
+  list.classList.toggle('hidden', DAYS.length === 0);
+
+  const sug = new Set(suggestDays(pl.area));
+  // 硬性：維持行程原順序，建議的天不得抽到最上面
+  DAYS.forEach(d => {
+    const isSug = sug.has(d.id);
+    const isAdded = pl.days.includes(d.id);
+    const b = document.createElement('button');
+    b.className = `day-chip w-full text-left rounded-xl p-3 flex items-center gap-2 ${isSug?'bg-rose-50 border border-rose-200':'bg-pink-50 border border-transparent'}`;
+    b.innerHTML = `
+      <span class="bg-rose-400 text-white text-xs rounded-full w-7 h-7 grid place-items-center shrink-0">D${d.n}</span>
+      <span class="flex-1 min-w-0">
+        <span class="block text-sm font-medium">${d.date}</span>
+        <span class="block text-xs ${d.city?'text-rose-400':'text-rose-300'}">${d.city || '未填城市'} · ${d.count?`已有 ${d.count} 項`:'還沒有安排'}</span>
+      </span>
+      ${isAdded?'<span class="text-[11px] rounded-full px-2 py-0.5 bg-emerald-50 text-emerald-600 shrink-0">已加入</span>':''}
+      ${isSug?'<span class="text-[11px] rounded-full px-2 py-0.5 bg-rose-100 text-rose-600 shrink-0">建議</span>':''}`;
+    b.onclick = () => pickDay(pl, d);
+    list.appendChild(b);
+  });
+  show('dayPicker');
+}
+function pickDay(pl, d){
+  if(!pl.days.includes(d.id)) pl.days.push(d.id);      // 同一家店可排多天
+  d.count++;
+  hide('dayPicker'); renderPockets(); renderDays();
+  toast(`已排進 D${d.n}（${d.date}）`, "go('trip')");
+}
+
+// 行程頁（只為驗證寫入結果與類別一致）
+function renderDays(){
+  const wrap = $('dayCards'); wrap.innerHTML = '';
+  DAYS.forEach(d => {
+    const mine = pockets.flatMap(p=>p.places).filter(p=>p.days.includes(d.id));
+    const c = document.createElement('div');
+    c.className = 'bg-white/80 rounded-2xl border border-pink-100 shadow-sm p-3';
+    c.innerHTML = `
+      <div class="flex items-center gap-2 mb-2">
+        <span class="bg-rose-400 text-white text-xs rounded-full w-7 h-7 grid place-items-center">D${d.n}</span>
+        <span class="font-medium text-sm">${d.date}</span>
+        <span class="flex-1"></span><span class="text-xs text-rose-300">${d.city||'未填城市'}</span>
+      </div>
+      ${mine.length ? mine.map(p=>{
+        const t = TYPES[p.cat];
+        return `<div class="flex items-start gap-1.5 bg-pink-50 rounded-xl p-2.5 mb-1.5">
+          <span class="text-rose-300 w-6 grid place-items-center">⠿</span>
+          <div class="flex-1 min-w-0">
+            <span class="text-[11px] rounded-md px-1.5 py-0.5 ${t.c}">${t.ico} ${t.label}</span>
+            <div class="text-sm font-medium mt-0.5">${p.name}</div>
+            <div class="text-xs text-rose-400">${p.note||''}</div>
+          </div>
+          <button class="text-sky-400 w-8 h-9 grid place-items-center" aria-label="地圖">📍</button>
+        </div>`;
+      }).join('') : '<p class="text-xs text-rose-300">（原型只顯示從口袋加進來的項目）</p>'}`;
+    wrap.appendChild(c);
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* C-12 / C-28 同步狀態                                                */
+/* ------------------------------------------------------------------ */
+function setSync(state){
+  const M = {
+    synced:{box:'bg-emerald-50 text-emerald-600', dot:'bg-emerald-400', txt:'已同步'},
+    syncing:{box:'bg-amber-50 text-amber-600',    dot:'bg-amber-400 animate-pulse', txt:'同步中…'},
+    offline:{box:'bg-amber-50 text-amber-600',    dot:'bg-amber-400', txt:'離線·1'},
+    failed:{box:'bg-rose-50 text-rose-600',       dot:'bg-rose-500',  txt:'失敗·看原因'},
+  }[state];
+  $('syncBadge').className = 'text-[11px] rounded-full px-2 py-1 flex items-center gap-1 shrink-0 ' + M.box;
+  $('syncDot').className = 'w-2 h-2 rounded-full ' + M.dot;
+  $('syncTxt').textContent = M.txt;
+  $('syncBadge').dataset.state = state;
+  if(state !== 'failed') hide('syncReason');
+}
+$('syncBadge').onclick = () => {
+  if($('syncBadge').dataset.state !== 'failed') return;
+  const open = $('syncReason').classList.toggle('hidden');
+  $('syncBadge').setAttribute('aria-expanded', String(!open));
+};
+
+/* ------------------------------------------------------------------ */
+/* 原型控制列                                                          */
+/* ------------------------------------------------------------------ */
+let emptyMode = false;
+$('simToggle').onclick = () => {
+  const p = $('simPanel'); p.classList.toggle('hidden');
+  const open = !p.classList.contains('hidden');
+  $('simToggle').textContent = open ? '原型控制 ▴' : '原型控制 ▾';
+  $('simToggle').setAttribute('aria-expanded', String(open));
+};
+$('simEmpty').onclick = () => {
+  emptyMode = !emptyMode;
+  if(emptyMode) pockets = [];
+  $('simEmpty').textContent = emptyMode ? '恢復有資料' : '空狀態 S-01';
+  if(!emptyMode) seed();
+  renderPockets(); renderDays();
+};
+$('simFail').onclick = () => { simFail = !simFail; $('simFail').textContent = '解析失敗：' + (simFail?'開':'關'); };
+$('simOffline').onclick = () => {
+  offline = !offline;
+  $('offBanner').classList.toggle('hidden', !offline);
+  setSync(offline ? 'offline' : 'syncing');
+  if(!offline) setTimeout(()=>setSync('synced'), 1200);
+  $('simOffline').textContent = offline ? '恢復連線' : '模擬離線';
+  $('ingestOffline').classList.toggle('hidden', !offline);
+  refreshOfflineWarn(); syncBtnState();
+  renderPockets();
+};
+$('simCapacity').onclick = () => $('capacity').classList.toggle('hidden');
+$('simFailSync').onclick = () => { setSync('failed'); show('syncReason'); $('syncBadge').setAttribute('aria-expanded','true'); };
+$('simShare').onclick   = () => { go('places'); openIngest('https://www.instagram.com/reel/C8xk2abcd/'); };
+$('simShareIg').onclick = () => { go('places'); openIngest('https://www.instagram.com/reel/C8xk2abcd/'); };
+$('simShareTh').onclick = () => { go('places'); openIngest('https://www.threads.net/@someone/post/C8xk2'); };
+
+$('howToggle').onclick = () => {
+  const s = $('howSteps'); s.classList.toggle('hidden');
+  $('howToggle').textContent = s.classList.contains('hidden') ? '怎麼做？ ▾' : '怎麼做？ ▴';
+};
+$('copyPrefix').onclick = () => { $('copyPrefix').textContent = '已複製'; setTimeout(()=>$('copyPrefix').textContent='複製', 1500); };
+
+/* ------------------------------------------------------------------ */
+/* 初始資料                                                            */
+/* ------------------------------------------------------------------ */
+function seed(){
+  placeSeq = 0;
+  pockets = [{
+    title:'福岡三日必吃美食', summary:'在地人推薦的中洲屋台與拉麵', platform:'instagram', open:true,
+    places:[
+      {...PARSED[0], id:'p'+(++placeSeq), days:['d2']},
+      {...PARSED[1], id:'p'+(++placeSeq), days:[]},
+    ]
+  },{
+    title:'沖繩那霸小旅行', summary:'國際通周邊的甜點與雜貨', platform:'threads', open:false,
+    places:[
+      {name:'BLUE SEAL 國際通店', nameJa:'ブルーシール 国際通り店', cat:'food', area:'那霸 國際通', note:'沖繩鹽味餅乾冰淇淋', conf:0.9, id:'p'+(++placeSeq), days:[]},
+      {name:'第一牧志公設市場',   nameJa:'第一牧志公設市場',       cat:'spot', area:'那霸',        note:'二樓可代客料理', conf:0.86, id:'p'+(++placeSeq), days:[]},
+    ]
+  }];
+}
+seed(); renderPockets(); renderDays(); setSync('synced'); go('places');
+</script>
+</body>
+</html>
