@@ -221,9 +221,18 @@ export function clampPlaces(list) {
     }));
 }
 
+// 15/30, not 30/60. Same numbers as PRD §5.2 (pocket.title / pocket.summary),
+// PRD §7.3, backend design §5.5 — and as SAVE_PLACES_TOOL below, which already
+// tells the model 「15 字內」/「30 字內」. Clamping at twice the documented
+// length let an over-long title through the one place that was supposed to
+// enforce it, and the pocket card is laid out for 15 characters.
+export const MAX_TITLE_LEN = 15;
+export const MAX_SUMMARY_LEN = 30;
 export const clampCollection = (raw) => ({
-  title: String((raw && raw.title) || "").trim().slice(0, 30) || "收藏的貼文",
-  summary: String((raw && raw.summary) || "").trim().slice(0, 60),
+  title:
+    String((raw && raw.title) || "").trim().slice(0, MAX_TITLE_LEN)
+    || "收藏的貼文",
+  summary: String((raw && raw.summary) || "").trim().slice(0, MAX_SUMMARY_LEN),
 });
 
 export const SYSTEM_PROMPT = [

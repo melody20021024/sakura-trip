@@ -26,6 +26,16 @@ const SB_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_K
 
 const fail = (res, reason, message) => res.status(200).json({ ok: false, reason, message });
 
+// The single response for every "we are not going to parse this for you"
+// case that must stay indistinguishable from the outside — currently the IP
+// rate limit and an unknown trip key. Callers pass `why` for the log only;
+// it never reaches the client.
+const RATE_LIMITED_MESSAGE = "剛剛解析太多次了,等一下再試。你貼的內容還留著。";
+function throttled(res, why) {
+  console.warn(`[parse-post] refused: ${why}`);
+  return fail(res, "rate_limited", RATE_LIMITED_MESSAGE);
+}
+
 // Cheap gate so a stranger with the URL can't burn the API key. Missing config
 // degrades to rate-limiting only: a misconfigured env var must not take the
 // whole feature down.
@@ -133,12 +143,13 @@ export default async function handler(req, res) {
 
   const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim()
     || req.socket?.remoteAddress || "";
-  if (rateLimited(ip)) {
-    return fail(res, "rate_limited", "剛剛解析太多次了,等一下再試。你貼的內容還留著。");
-  }
-  if (!(await tripExists(trip))) {
-    return fail(res, "rate_limited", "這份行程找不到,請從行程頁重新開啟。");
-  }
+  if (rateLimited(ip)) return throttled(res, "rate limit");
+  // Same reason AND the same message as the rate-limit branch, on purpose.
+  // Anything that distinguishes the two turns this endpoint into an oracle for
+  // 「這個 22 字元的 trip key 存不存在」 — and PRD §7.4 has the front end always
+  // prefer the backend `message`, so a different sentence leaks just as loudly
+  // as a different `reason` would. The real cause goes to the log instead.
+  if (!(await tripExists(trip))) return throttled(res, `unknown trip key ${trip}`);
 
   let ladder;
   try {
