@@ -8,6 +8,21 @@
 export const THUMB_MAX = 320; // longest edge, px
 export const THUMB_QUALITY = 0.6; // JPEG quality 0..1
 
+// v3 F-71: screenshots sent to /api/parse-post for OCR. A completely different
+// job from the checklist thumbnail above, so it gets its own pair of constants
+// and the 320/0.6 defaults are left untouched.
+//
+// 1568 is the native ceiling of the Standard vision tier `claude-haiku-4-5`
+// belongs to — send anything larger and the server downsamples it again, i.e.
+// two resamples instead of one, which makes small Japanese text worse, not
+// better. T-99 (PRD §7.5d, measured 2026-09-02) compared 1024/0.7 against
+// 1568/0.85 on real IG screenshots: at 1024/0.7 the grey small text (area,
+// note) was visibly mushy. Output is ~784x1568, ~155KB, ~207KB as base64.
+// Changing either number means re-running that comparison and writing the
+// result back to PRD §7.5d.
+export const OCR_MAX = 1568;
+export const OCR_QUALITY = 0.85;
+
 // Compress an image File/Blob to a JPEG data URL (downscaled to `max` px on the
 // longest edge). Resolves to a string; rejects on non-images / decode errors.
 export function compressImage(file, { max = THUMB_MAX, quality = THUMB_QUALITY } = {}) {
