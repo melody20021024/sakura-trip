@@ -1,7 +1,7 @@
 # Commit Plan: 櫻旅 v3「口袋地點」MVP
 
-> 建立時間：2026-09-02 ｜ **修訂：2026-09-03（依 PRD v3.9 回寫）** ｜ 狀態：**待確認**
-> 對應：[**PRD v3.9**](../01-PRD/PRD-v3-pocket-places.md) §8 的 P1–P10 ｜ [**UI spec v3.1**](../02-Design/ui-spec-v3-pocket.md)
+> 建立時間：2026-09-02 ｜ **修訂：2026-09-04（依 PRD v3.10 回寫）** ｜ 狀態：**待確認**
+> 對應：[**PRD v3.10**](../01-PRD/PRD-v3-pocket-places.md) §8 的 P1–P10 ｜ [**UI spec v3.1**](../02-Design/ui-spec-v3-pocket.md)
 > 設計文件：[frontend/pocket-v3.md](frontend/pocket-v3.md) v3.1.0｜[backend/parse-and-schema-v3.md](backend/parse-and-schema-v3.md) v3.1.0｜[cross-check-v3.md](cross-check-v3.md)
 > 範圍：**僅 MVP**。Phase 1.5 地圖（M1–M8）與 Phase 2 `share_target` 不在本計畫。
 
@@ -29,6 +29,17 @@
 | 3 | **B1 的降級階梯敘述改為「有圖必先讀圖」** —— v3.1 寫的 `text → oEmbed → og → images[] → 失敗` 與 PRD §7.2 順位 1 矛盾 | PRD v3.9 §7.2 |
 | 4 | B1 追加：`reason: "not_configured"`（缺供應商金鑰）、`max_tokens` 4096 + `stop_reason` 檢查、`PARSE_MODEL` 拆成兩個供應商各自的變數、trip 不存在與限流**回應逐字相同** | 2026-09-03 PR #16／#17 審查意見 |
 | 5 | T-99 由「實作後必做」改為「**已完成**，端點接起來後用實際回傳結果複驗」| PRD v3.9 §10 |
+
+## 0c. 2026-09-04 回寫（依 PRD v3.10）
+
+> 0b 的第 4 列把四項改動的出處記成「PR 審查意見」。PRD **v3.10 已正式裁定其中兩項**（Q-12、Q-13），
+> 出處升級為 PRD 本文；另補一項 B1 的追加。**commit 切分不變**，這裡只是把依據對齊。
+
+| # | 改動 | 出處 |
+|---|---|---|
+| 6 | `max_tokens` 4096 + `stop_reason` 檢查、`bad_request` / `not_configured` 進 §7.1 —— 出處由「PR 審查意見」升級為 **PRD 本文** | PRD v3.10 §7.5c／§7.1 |
+| 7 | **B1 追加**：供應商呼叫失敗回**新的 `upstream_error`**（自 `rate_limited` 拆出，只拆這一種；「限流」與「trip 不存在」仍須逐字不可區分）| 2026-09-04 實作（PRD §7.1 尚未列，見 questions.md **Q-15**）|
+| 8 | **B1 追加**：金鑰檢查排在限流與 trip 檢查**之後**的順序須有回歸測試鎖住 | PRD v3.10 §7.4 |
 
 ## 分支規劃
 

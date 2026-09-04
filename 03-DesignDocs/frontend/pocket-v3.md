@@ -4,8 +4,8 @@
 
 :::info
 功能名稱：v3 口袋地點（截圖／貼上收藏 → AI 解析覆核 → 建議日期 → 寫入行程 → 導航）
-版本：**3.2.0**（**2026-09-03 依 PRD v3.9 回寫**；前版 3.1.0 依 PRD v3.7 / UI spec v3.1 同步）
-最後更新：2026-09-03
+版本：**3.2.1**（**2026-09-04 依 PRD v3.10 回寫**；前版 3.2.0 依 PRD v3.9、3.1.0 依 PRD v3.7 / UI spec v3.1）
+最後更新：2026-09-04
 作者：程式開發員
 :::
 
@@ -37,13 +37,22 @@
 > 另：後端新增 `reason: "not_configured"`（缺供應商金鑰），前端沿用「原樣顯示後端 `message`」的既有處理，
 > **不需新增分支**（見 [cross-check-v3.md](../cross-check-v3.md) §3）。
 
+> **v3.2.1 同步摘要（2026-09-04 依 PRD v3.10 回寫）**
+>
+> 上游由 v3.9 進到 **v3.10**（§7.5c 裁定 Q-12 的 `max_tokens` 4096；§7.1／§7.4 裁定 Q-13 的錯誤碼與
+> 「限流 ↔ trip 不存在逐字不可區分」）。這兩項都落在後端，前端**沒有任何行為變更**，本次只做兩件事：
+>
+> | # | 變更 | 影響章節 |
+> |---|---|---|
+> | 1 | 全文版本引用 v3.9 → **v3.10** | 標頭、§1、§4.6 |
+> | 2 | `failReason` 的 union 補上 **`not_configured`** 與新增的 **`upstream_error`**（供應商呼叫失敗，由 `rate_limited` 拆出）。兩者都走既有的「未知 reason **原樣顯示後端 `message`**」分支，**仍然不需新增 UI 分支**；補進型別只是不讓 union 對不上後端契約 | §5.2 |
 > 本文件為**增修**，不取代 [app-v2.md](app-v2.md) v1.0.0；v2 的元件結構、`useTrip` 資料流、同步引擎規格全數繼續有效。
 > 涵蓋範圍＝ **PRD §8 的 MVP（P1–P10）**：F-69～F-78、F-81、F-83。
 > **不涵蓋**：Phase 1.5 地圖（F-79／F-80／F-84～F-87）、Phase 2 `share_target`（F-82）。
 
 ## 1. 相關連結
 
-- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.7**）
+- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.10**）
 - UI 規範：[../../02-Design/ui-spec-v3-pocket.md](../../02-Design/ui-spec-v3-pocket.md)（**v3.1**：P-06、C-18～**C-30**、S-01～**S-21**、DDR-09～**DDR-32**）
 - UI 原型：[../../02-Design/prototype-v3-pocket.html](../../02-Design/prototype-v3-pocket.html)
 - 後端 / 資料契約：[../backend/parse-and-schema-v3.md](../backend/parse-and-schema-v3.md)
@@ -465,7 +474,7 @@ export function detectPlatform(raw) {
 import { compressImage, OCR_MAX, OCR_QUALITY } from "../lib/image.js";
 
 export const MAX_SHOTS = 3;
-export const MAX_SHOT_B64 = 4_000_000;         // 每張（PRD v3.9 §7.5d;後端 MAX_IMAGE_B64 同值）
+export const MAX_SHOT_B64 = 4_000_000;         // 每張（PRD v3.10 §7.5d;後端 MAX_IMAGE_B64 同值）
 export const MAX_SHOTS_B64_TOTAL = 10_000_000; // 總量（後端 MAX_IMAGES_TOTAL_B64 同值）
 
 // 逐張壓縮。compressImage 回傳的是【data URL】,送出前必須去掉前綴。
@@ -550,7 +559,10 @@ interface IngestState {
   shots: Shot[];                       // 0..3 張,見 §4.6
   textOpen: boolean;                   // S-20 下貼文文字欄的折疊狀態（見下方「折疊不得藏字」）
   busyShots: boolean;                  // 壓縮中
-  failReason: "" | "need_text_or_image" | "no_places" | "too_large" | "rate_limited" | "bad_request";
+  // 與後端 §6.5 錯誤碼表同源。not_configured / upstream_error 走「未知 reason 原樣顯示」
+  // 的既有分支,不新增 UI;列進 union 只是不讓型別對不上契約。
+  failReason: "" | "need_text_or_image" | "no_places" | "too_large" | "rate_limited"
+            | "bad_request" | "not_configured" | "upstream_error";
   collection: { title: string; summary: string };
   rows: ReviewRowState[];              // 覆核用的【本地 state】，寫入前 trip.data.places 零變化（T-80）
 }
