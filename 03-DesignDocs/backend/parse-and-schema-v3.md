@@ -753,7 +753,8 @@ const SAVE_PLACES_TOOL = {
   },
 };
 
-const MAX_OUTPUT_TOKENS = 4096;   // PRD v3.10 §7.5c 裁定（Q-12）;上界是 12 筆地點,不是圖片張數
+const MAX_OUTPUT_TOKENS = 4096;   // PRD v3.10 §7.5c 裁定（Q-12）。看的是輸出量,不是圖片張數;
+                                  // 4096 只是量級餘裕,真正的安全網是下面的 stop_reason 檢查
 
 const msg = await client.messages.create({
   model: modelFor("anthropic"),                  // PARSE_MODEL_ANTHROPIC || PARSE_MODEL || claude-haiku-4-5
@@ -764,7 +765,8 @@ const msg = await client.messages.create({
   tool_choice: { type: "tool", name: "save_places" },   // 強制,保證回結構化 JSON
   messages: [{ role: "user", content: userContent }],   // 見下
 });
-// 上限再高也要知道自己撞到了(PRD v3.10 §7.5c)。被截斷時 tool_use.input 仍是個
+// 這行不是可選的(PRD v3.10 §7.5c):schema 沒有給 name/nameJa/area 任何長度上限,
+// 所以 4096 也不保證夠。被截斷時 tool_use.input 仍是個
 // 看起來完整的物件,clampPlaces 照收,沒有這行 log 就完全沒有線索。
 if (msg.stop_reason === "max_tokens") {
   console.warn("[parse-post] anthropic hit max_tokens; the place list may be truncated",
@@ -822,11 +824,21 @@ function buildImageContent(images, cityHintLine, extraText = "") {
 | 仍走**強制 tool-use** | 與文字路徑完全相同，`claude-haiku-4-5` 支援 `tool_choice: {type:"tool"}`，不需要為多圖改變輸出約束 |
 
 > **`max_tokens` 由 2048 提高到 4096（2026-09-03 提出，PRD v3.10 §7.5c 已裁定採納）**：PRD v3.9 以前寫「維持 2048 即可」，理由是多張圖增加的是
-> **input** tokens——這個理由本身正確，但它量的是錯的那一軸。輸出的上界不是圖片張數，而是
-> **12 筆地點 × (`name` / `nameJa` / `area` / `note`)**；以繁中／日文計約 3–4k output tokens，`2048` 落在
-> 這個最壞情況之下。被截斷時 `tool_use.input` 仍是個**看起來完整的物件**，`clampPlaces` 照收，
-> 使用者只會發現「店比貼文裡少」而沒有任何線索。因此：`max_tokens: 4096`，並在
-> `stop_reason === "max_tokens"` 時 `console.warn`。輸出 token 只在真的用到時才計費，餘裕不花錢。
+> **input** tokens——這個理由本身正確，但它答錯了問題。決定 `max_tokens` 的不是圖片張數，是**輸出上界**。
+> 以 `clampPlaces` 的截斷值粗估，12 筆地點（`name` / `nameJa` / `area` / `note`）加 `title` / `summary`
+> 與 JSON 結構開銷，滿載約 **3–4k output tokens**，`2048` 落在這個數字之下。
+>
+> ⚠️ **那個算式只是量級參考，不是上界的保證**（PRD §7.5c，2026-09-03 由程式審查員指出並修正措辭）：
+> §7.3 的 tool schema **只對 `note` 寫「60 字內」**，而且那也只是 `description` 的文字提示、不是 `maxLength`；
+> `name` / `nameJa` / `area` **既無長度規定也無 `maxLength`**。模型完全可以回得比 3–4k 更長 ——
+> `clampPlaces` 是**收到之後**才截斷的，攔不住已經被 `max_tokens` 砍掉的那一段。
+>
+> 所以**真正的安全網是 `stop_reason === "max_tokens"` 的檢查，不是 4096 這個數字**。
+> 4096 只是把「撞到上限」從常見壓成罕見；**檢查才保證撞到時不會無聲無息**，兩者不可互相取代，
+> 尤其不能因為「4096 應該夠了」就把那行 `console.warn` 當成可選的。
+> 被截斷時 `tool_use.input` 仍是個**看起來完整的物件**，`clampPlaces` 照收、端點照回 `ok:true`，
+> 使用者只會發現「店比貼文裡少」，而 log 裡除了這行 warn 之外沒有任何線索。
+> 輸出 token 只在真的用到時才計費，餘裕不花錢。
 > **PRD v3.10 §7.5c 已裁定採納此修正（Q-12 結案）**，本文件與 PRD 現已一致。
 
 > **多圖的 input token 估算（PRD v3.10 §7.5d）**：1568 視覺 tokens／張（不是 v3.1.0 寫的 2.7k），3 張約 4.7k。
@@ -841,7 +853,7 @@ function buildImageContent(images, cityHintLine, extraText = "") {
   也不要猜補。這一條直接對應 F-72「覆核從保險變成必經校對」——`confidence` 是覆核清單預設不勾的依據，
   模型硬猜會讓那道防線失效。
 
-**模型參數說明**：`claude-haiku-4-5` 支援 `temperature`（PRD 指定 0）與強制 `tool_choice`；本呼叫不啟用 extended thinking（省成本、本任務不需要）。`max_tokens: 4096`（見上方說明）；模型字串取自 `PARSE_MODEL_ANTHROPIC || PARSE_MODEL || "claude-haiku-4-5"`。
+**模型參數說明**：`claude-haiku-4-5` 支援 `temperature`（PRD 指定 0）與強制 `tool_choice`；本呼叫不啟用 extended thinking（省成本、本任務不需要）。`max_tokens: 4096`，**且必須搭配 `stop_reason` 檢查**（見上方說明：4096 是量級餘裕，不是上界保證）；模型字串取自 `PARSE_MODEL_ANTHROPIC || PARSE_MODEL || "claude-haiku-4-5"`。
 
 ### 6.4 結果清洗（`_parse-lib.js`，純函式，可 vitest 測）
 

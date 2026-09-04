@@ -158,9 +158,11 @@ P1 → P2 → P3  合併 main → 部署 Vercel
     **防護六道**：trip key 存在性檢查（`SUPABASE_URL || VITE_SUPABASE_URL` 讀取鏈，**任一缺失即跳過並記 log**）、
     每 IP 20 次/小時、`slice(0,12)`、**張數 ≤ 3**、**單張 b64 ≤ 4MB**、**總量 ≤ 10MB**；全部外部 fetch 6 秒逾時。
     **trip 不存在與限流必須回逐字相同的 `reason` 與 `message`**（否則端點成為 trip key 存在性探測器）；
-    **缺供應商金鑰回獨立的 `reason: "not_configured"`**，不得混進 `rate_limited`。
+    **缺供應商金鑰回獨立的 `reason: "not_configured"`**、**供應商呼叫失敗回獨立的 `reason: "upstream_error"`**，
+    兩者都不得混進 `rate_limited`（`rate_limited` 只留給「限流」與「trip 不存在」共用，見上一行）。
     模型字串走 `PARSE_MODEL_ANTHROPIC` / `PARSE_MODEL_GEMINI`（`PARSE_MODEL` 保留為 fallback）；
-    `max_tokens: 4096` 並檢查 `stop_reason === "max_tokens"`。
+    `max_tokens: 4096` **且必須檢查 `stop_reason === "max_tokens"`** —— schema 沒有給
+    `name` / `nameJa` / `area` 任何長度上限，4096 只是量級餘裕，**檢查才是安全網**（PRD §7.5c）。
   - **測試**：**T-78**（`clampPlaces` 截斷至 12、非法 category 落回 `other`、confidence 夾在 0..1）、
     T-76 的階梯判斷層（`resolveSource` 五個順位）、**三道圖片上限各自回 `too_large`**、
     **`buildImageContent` 的 block 序列與順序**。T-76 的 HTTP 層、T-77、T-79 以 curl 對 preview 部署人工驗收。
