@@ -4,8 +4,8 @@
 
 :::info
 功能名稱：v3「口袋地點」後端／資料層（遷移前向相容修正、schema v5、`/api/parse-post`）
-版本：**3.1.0**（依 PRD v3.7 / UI spec v3.1 回頭同步）
-最後更新：2026-09-02
+版本：**3.2.0**（**2026-09-03 依 PRD v3.9 回寫**；前版 3.1.0 依 PRD v3.7 / UI spec v3.1 同步）
+最後更新：2026-09-03
 作者：程式開發員
 :::
 
@@ -20,13 +20,29 @@
 > | 5 | F-78 對 IG 的限制裁定「**MVP 不解決**」：截圖不進 jsonb、**不開 Dexie blob 暫存區**（PRD §4.2）| §4.2、§7 |
 > | 6 | 新增 **T-99**（OCR 參數實測），與 T-98 同為人工實機驗收 | §7 |
 
+> **v3.2.0 同步摘要（2026-09-03 依 PRD v3.9 回寫）**
+>
+> 以下五處是 PRD v3.7～v3.9 更新後留在本文件的殘留，已回寫。**PRD v3.9 為唯一準則。**
+>
+> | # | 原本寫的 | 現在（PRD v3.9） | 影響章節 |
+> |---|---|---|---|
+> | 1 | 降級階梯把 `images[]` 排在第 4（og:meta 之下）| **順位 1：有圖必先讀圖**，文字不論長短併進同一次呼叫當補充 | §5.5、§6.2 |
+> | 2 | 每張 base64 ≤ **1.4MB**、總量 ≤ **4MB** | 每張 ≤ **4MB**、總量 ≤ **10MB**（PRD §7.5d）| §5.5、§6.1、§6.5、§7 |
+> | 3 | 費用以 **1024px / 2.7k tokens 一張**估算 | **1568px / 1568 視覺 tokens 一張，3 張約 USD $0.005**（PRD §7.5d 實測）| §6.1、§6.3 |
+> | 4 | 「`ANTHROPIC_API_KEY` — v2 航班功能已設在 Vercel」| **錯誤**。`api/flight.js` 讀的是 `AERODATABOX_KEY`；**Vercel 上沒有 `ANTHROPIC_API_KEY`**，上線前必須手動新增 | §6.1、§7 |
+> | 5 | trip key 不存在時回 `rate_limited` 但**配一句不同的訊息** | 兩者的 `reason` **與 `message` 皆須逐字相同**（實作已修，PR `fix/parse-post-review`）| §5.5、§6.5 |
+>
+> 另有三處實作階段的契約增修，一併記入：**新增 `reason: "not_configured"`**（缺供應商金鑰）、
+> **`max_tokens` 2048 → 4096**（見 §6.3 的說明與 [questions.md](../questions.md) Q-12）、
+> **`PARSE_MODEL` 拆成 `PARSE_MODEL_ANTHROPIC` / `PARSE_MODEL_GEMINI`**。
+
 > 註：本專案無 NestJS/Prisma。「後端」＝ **Supabase BaaS（Postgres jsonb + Realtime）** ＋ **Vercel Serverless Functions**。
 > 合併／遷移邏輯執行在前端，但屬**多客戶端共享契約**，依 v2 慣例統一由本文件管轄（見 [sync-and-apis.md](sync-and-apis.md) §5 前言）。
 > 本文件為**增修**，不取代 `sync-and-apis.md` v1.0.0；該文件的 v2 契約全數繼續有效。
 
 ## 1. 相關連結
 
-- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.7**，F-69～F-78、F-81、F-83；§2 Phase 0、§5 資料模型、§7 端點規格與 **§7.5b 多張截圖**、§10 測試規則含 **T-99**）
+- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.9**，F-69～F-78、F-81、F-83；§2 Phase 0、§5 資料模型、§7 端點規格與 **§7.5b 多張截圖**、**§7.5d OCR 參數實測結果**、§10 測試規則含 **T-99**）
 - UI 規範：[../../02-Design/ui-spec-v3-pocket.md](../../02-Design/ui-spec-v3-pocket.md)（**v3.1**，依平台分流、C-30 ShotPicker）
 - UI 原型：[../../02-Design/prototype-v3-pocket.html](../../02-Design/prototype-v3-pocket.html)
 - 前端設計文件：[../frontend/pocket-v3.md](../frontend/pocket-v3.md)
@@ -418,10 +434,11 @@ sequenceDiagram
     UI->>API: POST { trip, url?, text?, images?: [{base64, mime}] (≤3), cityHint? }
     API->>API: ① method / body 檢查
     API->>SB: ② GET /rest/v1/trips?id=eq.<trip>&select=id（缺環境變數則跳過並記 log）
-    SB-->>API: [] → 200 { ok:false, reason:"rate_limited" }（不洩漏 key 是否存在）
+    SB-->>API: [] → 200 { ok:false, reason:"rate_limited" }（reason 與 message 皆與限流逐字相同,不洩漏 key 是否存在）
     API->>API: ③ 每 IP 滑動視窗限流（20 次/小時）
-    API->>API: ④ images 檢查：張數 ≤ 3、每張 b64 ≤ 1.4MB、總量 ≤ 4MB
-    API->>API: ⑤ 降級階梯 → 取得 sourceText 或 images[]
+    API->>API: ④ images 檢查：張數 ≤ 3、每張 b64 ≤ 4MB、總量 ≤ 10MB
+    API->>API: ④b 供應商金鑰檢查（缺 → 200 { ok:false, reason:"not_configured" }）
+    API->>API: ⑤ 降級階梯 → 有圖先讀圖,否則 text / oEmbed / og
     alt 全部失敗
         API-->>UI: 200 { ok:false, reason:"need_text_or_image" }
     end
@@ -441,8 +458,8 @@ const PROVIDER = process.env.PARSE_PROVIDER || "anthropic";
 const MODEL = process.env.PARSE_MODEL || "claude-haiku-4-5";
 const MAX_PLACES = 12;
 const MAX_IMAGES = 3;                      // PRD §7.5b:張數上限
-const MAX_IMAGE_B64 = 1_400_000;           // 每張 ≈ 1MB 二進位
-const MAX_IMAGES_B64_TOTAL = 4_000_000;    // 總量,留在 Vercel request body 限制內
+const MAX_IMAGE_B64 = 4_000_000;           // 每張（PRD v3.9 §7.5d;API 實際允許 10MB/張）
+const MAX_IMAGES_B64_TOTAL = 10_000_000;   // 總量（API 實際允許 32MB/請求）
 const RATE_LIMIT = { max: 20, windowMs: 3_600_000 };
 const hits = new Map();                    // IP → number[]（冷啟動會重置,已知且接受）
 
@@ -462,8 +479,20 @@ export default async function handler(req, res) {
   if (shots.reduce((n, i) => n + i.base64.length, 0) > MAX_IMAGES_B64_TOTAL)
     return fail("too_large", "這幾張截圖加起來太大了,移除一張再試。");
 
-  if (!withinRateLimit(clientIp(req))) return fail("rate_limited", "剛剛解析太多次了,等幾分鐘再試。你貼的內容還留著。");
-  if (!(await tripExists(trip))) return fail("rate_limited", "無法解析,請稍後再試。");
+  // 限流與「trip 不存在」必須回【同一個 reason 且同一段 message】—— 見本節末說明。
+  const THROTTLED = "剛剛解析太多次了,等一下再試。你貼的內容還留著。";
+  if (!withinRateLimit(clientIp(req))) return fail("rate_limited", THROTTLED);
+  if (!(await tripExists(trip))) {
+    console.warn(`[parse-post] refused: unknown trip key ${trip}`);   // 真正的原因只進 log
+    return fail("rate_limited", THROTTLED);
+  }
+
+  // 缺金鑰要壞得明顯,不能混進 rate_limited（§6.1 環境變數表）。
+  const missingKey = missingProviderKey(PROVIDER);
+  if (missingKey) {
+    console.error(`[parse-post] ${missingKey} is not set`);
+    return fail("not_configured", "解析服務尚未設定金鑰,請聯絡管理者。");
+  }
 
   const ladder = await resolveSource({ url, text, images: shots });   // §6.2
   if (!ladder) return fail("need_text_or_image",
@@ -486,13 +515,20 @@ export default async function handler(req, res) {
     ok: true,
     via: ladder.via,
     source: { platform: platformOf(url), url },
-    collection: { title: (raw.title || "").slice(0, 15), summary: (raw.summary || "").slice(0, 30) },
+    collection: { title: (raw.title || "").slice(0, 15), summary: (raw.summary || "").slice(0, 30) },  // 15 / 30,與 PRD §5.2、§7.3 及 tool schema 的字數同源
     places,
   });
 }
 ```
 
 > **trip key 不存在時故意回 `rate_limited` 而非新的 `not_found`**：讓端點不成為「這個 22 字元 key 存不存在」的探測器；同時前端已有 `rate_limited` 的文案，不必新增分支。
+>
+> **⚠️ 相同的 `reason` 還不夠 —— `message` 也必須逐字相同（2026-09-03 修正）。** 首版實作回的是
+> `reason:"rate_limited"` 配上「這份行程找不到,請從行程頁重新開啟。」，而 PRD §7.4 規定
+> **前端一律優先顯示後端的 `message`**，於是那句不同的話把 `reason` 想遮的事情原封不動說了出來，
+> 端點照樣是存在性探測器。實作上兩條分支共用同一個 `throttled()` 助手（同 reason、同 message、同狀態碼），
+> 真正的原因只寫進 `console.warn`。**回歸測試**：`api/__tests__/parse-post.test.js`
+> 斷言兩種情況的回應物件 `toEqual` 相等。
 
 ---
 
@@ -503,16 +539,25 @@ export default async function handler(req, res) {
 - **Endpoint**：`POST /api/parse-post`
 - **Description**：把社群貼文的連結／文字／**最多 3 張截圖**解析成結構化地點清單。
 - **費用**：Anthropic `claude-haiku-4-5`（input $1 / output $5 per MTok），約 1¢/次；100 次/月 ≈ **USD $1**。`PARSE_PROVIDER=gemini` 可切到 Gemini Flash 免費層 → **$0**。
-  **多張截圖的成本**：1024px 長截圖約 2.7k image tokens／張，3 張約 8.2k input tokens ≈ **USD $0.01 以下／次**（PRD §7.5b），仍在每月 $1 的上限內。
+  **多張截圖的成本（PRD v3.9 §7.5d 實測值）**：`OCR_MAX = 1568` / `OCR_QUALITY = 0.85` 壓出的 784×1568 截圖為 **1568 視覺 tokens／張**（1568 正好是 `claude-haiku-4-5` 所屬 Standard tier 的上限，再大會被伺服器端縮一次），3 張約 4.7k input tokens ≈ **USD $0.005／次**，仍在每月 $1 的上限內。
 - **環境變數**
 
 | 變數 | 必要性 | 說明 |
 |------|--------|------|
-| `ANTHROPIC_API_KEY` | `PROVIDER=anthropic` 時必要 | v2 航班功能已設在 Vercel |
-| `GEMINI_API_KEY` | `PROVIDER=gemini` 時必要 | 免費層 |
+| `ANTHROPIC_API_KEY` | `PROVIDER=anthropic` 時必要 | ⚠️ **Vercel 上目前沒有這個變數，上線前必須手動新增。**（本文件 v3.1.0 寫「v2 航班功能已設在 Vercel」是**錯的** —— 那指的是 `AERODATABOX_KEY`，`api/flight.js` 讀的是後者。2026-09-03 查 Vercel 環境變數頁，只有 `AERODATABOX_KEY` 與 `VITE_SUPABASE_*`。）|
+| `GEMINI_API_KEY` | `PROVIDER=gemini` 時必要 | 免費層。同樣尚未設定 |
 | `PARSE_PROVIDER` | 選填，預設 `anthropic` | 一鍵切換供應商 |
-| `PARSE_MODEL` | 選填 | 覆寫模型字串（避免重蹈 v2「模型字串寫死過期」的覆轍）|
+| `PARSE_MODEL_ANTHROPIC` | 選填，預設 `claude-haiku-4-5` | 覆寫 Anthropic 模型字串 |
+| `PARSE_MODEL_GEMINI` | 選填，預設 `gemini-2.0-flash` | 覆寫 Gemini 模型字串 |
+| `PARSE_MODEL` | 選填，**向下相容的 fallback** | 兩個供應商原本共用這一個變數：切到 gemini 時若忘了改，會把 `claude-haiku-4-5` 送給 Google 並收到看不出原因的 404。已拆成上面兩個；本變數保留，僅在對應的專屬變數缺席時生效 |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` | 選填（缺了只是降級） | trip key 存在性檢查。**PRD v3.7 §7.4 已撤銷原本的顧慮**：`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` 早已存在於 Vercel 專案設定（Production and Preview），而 Vercel 後台的環境變數對 serverless function 的 `process.env` **一律可見**（`VITE_` 前綴只對 Vite 有意義）。**不需新增任何環境變數、無需手動設定。** 讀取鏈見下方 |
+
+> **缺金鑰必須壞得明顯（2026-09-03 新增）**：`new Anthropic()` 由 SDK 內部讀 `process.env`，
+> 因此**無法用 grep 程式碼判斷變數有沒有設**，必須在**執行期**檢查。缺少時直接回
+> **`reason: "not_configured"`**、訊息「解析服務尚未設定金鑰,請聯絡管理者。」，並 `console.error`
+> 點名缺的是哪一個變數。**不得讓它落進 `catch` 變成 `rate_limited`「解析服務暫時不通」**——
+> 那會和網路抖動、真的限流混成一團，是最難查的那種故障。檢查點在**呼叫供應商之前**、
+> 降級階梯之前（省掉註定白做的外部 fetch），在限流與 trip key 檢查之後（既有防護順序不變）。
 
 **環境變數讀取鏈（硬性寫法）**
 
@@ -588,13 +633,17 @@ interface ParsedPlace {
 
 ### 6.2 降級階梯（`resolveSource`）
 
+> **2026-09-03 依 PRD v3.9 §7.2 回寫。** 本節 v3.1.0 的排序（`images[]` 排第 4、在 og:meta 之下）
+> 與 PRD 的「**有圖必先讀圖**」直接矛盾，且矛盾的方向會造成真實故障：使用者上傳了截圖，
+> 卻因為 og 僥倖回了一段無關文字而**完全不看圖**。實作（`api/_parse-lib.js`）走的是 PRD 的順序。
+
 | 順位 | 條件 | 動作 | `via` |
 |------|------|------|-------|
-| 1 | `text.trim().length >= 40` | 直接餵 LLM | `text` |
-| 2 | URL host 屬 YouTube / TikTok | 官方 oEmbed（公開免金鑰）取 `title` + `author_name` → LLM | `oembed` |
-| 3 | 其他 URL | 伺服器 `fetch`，正則抽 `og:title` / `og:description`。合併後 < 40 字視為失敗。**Instagram 幾乎必失敗**（機房 IP 撞登入牆），這是預期行為不是 bug | `og` |
-| 3.5 | `text` 非空但 < 40 字 | 併入順位 3 的結果一起餵 LLM；若順位 3 也空，仍以這段短文字送 LLM（總比直接失敗好） | `text` |
-| 4 | `images.length >= 1` | 多模態 LLM 讀圖，**N 張（≤3）放進同一個 request、同一次 LLM 呼叫** | `image` |
+| **1** | **`images.length >= 1`** | **多模態 LLM 讀圖，N 張（≤3）放進同一個 request、同一次 LLM 呼叫**。使用者填的 `text`（**任何長度**）一併附進同一次呼叫當補充脈絡 | `image` |
+| 2 | `text.trim().length >= 40` | 直接餵 LLM | `text` |
+| 3 | URL host 屬 YouTube / TikTok | 官方 oEmbed（公開免金鑰）取 `title` + `author_name` → LLM | `oembed` |
+| 4 | 其他 URL | 伺服器 `fetch`，正則抽 `og:title` / `og:description`。合併後 < 40 字視為失敗。**Instagram 幾乎必失敗**（機房 IP 撞登入牆），這是預期行為不是 bug | `og` |
+| 4.5 | 以上皆空但 `text` 非空（< 40 字）| 仍以這段短文字送 LLM（總比直接失敗好）| `text` |
 | 5 | 皆失敗 | `ok:false, reason:"need_text_or_image"` | — |
 
 **`resolveSource` 的回傳型別（含多圖）**
@@ -602,18 +651,20 @@ interface ParsedPlace {
 ```typescript
 type Ladder =
   | { via: "text" | "oembed" | "og"; sourceText: string }
-  | { via: "image"; images: ParseImage[] };     // 1..3 張,順序即使用者選取順序
+  | { via: "image"; images: ParseImage[]; extraText: string };   // 1..3 張,順序即使用者選取順序
 ```
 
-> **順位 4 為什麼不切成多次呼叫**：三張截圖是**同一則貼文的連續片段**（caption 上半、下半、字幕），
+> **順位 1 為什麼不切成多次呼叫**：三張截圖是**同一則貼文的連續片段**（caption 上半、下半、字幕），
 > 切開送會讓每次呼叫都只看到殘缺的上下文——第 2 張裡的「這家也很推」失去指涉對象，
 > 而且會產生三份彼此不知道的 `title` / `summary`，覆核清單得再自己合併去重。
-> 一次呼叫讓模型自己在三張圖之間對齊，成本仍在 $0.01 以下（PRD §7.5b）。
+> 一次呼叫讓模型自己在三張圖之間對齊，成本 3 張約 USD $0.005（PRD §7.5d）。
 >
-> **`text` 與 `images` 同時存在時**：階梯順位不變（1 > 4），仍走 `text`；截圖不併送。
-> 這是刻意的——IG 模式下的文字欄是選填（作者置頂留言／使用者自己打的店名），
-> 若併送會讓一則短文字把三張截圖的成本拖進來卻沒有增益。
-> **例外**：`text` < 40 字時走順位 3.5，此時若順位 3 也空且有截圖，**改走順位 4 並把短文字附在 text block 裡**（見 §6.3）。
+> **`text` 與 `images` 同時存在時（v3.1.0 的規則已作廢）**：不再「走 text、截圖不併送」。
+> T-98 證明 IG 的 caption 無法複製為文字後，截圖成為本專案主平台唯一可行的內容路徑，
+> 把它排在文字之下會出現兩種錯誤：① 有圖卻不看圖；② 使用者只打「一蘭 中洲店」這種
+> < 40 字的短提示配 3 張截圖，短文字構不成順位 2、圖又排在後面。
+> **新規則單純且不會再錯：有圖就一定讀圖，文字（不論長短）以 `extraText` 併進同一次呼叫當補充。**
+> 組裝位置見 §6.3（指示 text block 之後的「使用者另外補充的文字」段）。
 
 **oEmbed 端點**（皆為公開、免金鑰）：
 `https://www.youtube.com/oembed?format=json&url=…` ／ `https://www.tiktok.com/oembed?url=…`
@@ -719,7 +770,15 @@ function buildImageContent(images, cityHintLine, extraText = "") {
 | `media_type` 取 `img.mime || "image/jpeg"` | 前端 `compressImage` 一律輸出 JPEG；`||` 只是防呆 |
 | 仍走**強制 tool-use** | 與文字路徑完全相同，`claude-haiku-4-5` 支援 `tool_choice: {type:"tool"}`，不需要為多圖改變輸出約束 |
 
-> **`max_tokens` 不需調整**：多張圖增加的是 **input** tokens（約 2.7k／張），輸出仍是最多 12 筆地點，`2048` 足夠。
+> **`max_tokens` 由 2048 提高到 4096（2026-09-03）**：PRD §7.5c 寫「維持 2048 即可」，理由是多張圖增加的是
+> **input** tokens——這個理由本身正確，但它量的是錯的那一軸。輸出的上界不是圖片張數，而是
+> **12 筆地點 × (`name` / `nameJa` / `area` / `note`)**；以繁中／日文計約 3–4k output tokens，`2048` 落在
+> 這個最壞情況之下。被截斷時 `tool_use.input` 仍是個**看起來完整的物件**，`clampPlaces` 照收，
+> 使用者只會發現「店比貼文裡少」而沒有任何線索。因此：`max_tokens: 4096`，並在
+> `stop_reason === "max_tokens"` 時 `console.warn`。輸出 token 只在真的用到時才計費，餘裕不花錢。
+> **此處與 PRD §7.5c 不一致，已列 [questions.md](../questions.md) Q-12 請技術總監裁定。**
+
+> **多圖的 input token 估算（PRD v3.9 §7.5d）**：1568 視覺 tokens／張（不是 v3.1.0 寫的 2.7k），3 張約 4.7k。
 
 **System prompt 重點**（PRD §7.3）
 - 只抽**真實存在、可在地圖上找到**的店家或景點。
@@ -731,7 +790,7 @@ function buildImageContent(images, cityHintLine, extraText = "") {
   也不要猜補。這一條直接對應 F-72「覆核從保險變成必經校對」——`confidence` 是覆核清單預設不勾的依據，
   模型硬猜會讓那道防線失效。
 
-**模型參數說明**：`claude-haiku-4-5` 支援 `temperature`（PRD 指定 0）與強制 `tool_choice`；本呼叫不啟用 extended thinking（省成本、本任務不需要）。`max_tokens: 2048` 足以容納 12 筆 × 約 120 token。
+**模型參數說明**：`claude-haiku-4-5` 支援 `temperature`（PRD 指定 0）與強制 `tool_choice`；本呼叫不啟用 extended thinking（省成本、本任務不需要）。`max_tokens: 4096`（見上方說明）；模型字串取自 `PARSE_MODEL_ANTHROPIC || PARSE_MODEL || "claude-haiku-4-5"`。
 
 ### 6.4 結果清洗（`_parse-lib.js`，純函式，可 vitest 測）
 
@@ -757,20 +816,37 @@ export function clampPlaces(list) {
 
 `slice(0,12)` 是 schema `maxItems` 之外的**第二道**保險（模型偶爾會超）。
 
+```js
+export const MAX_TITLE_LEN = 15;      // PRD §5.2 pocket.title / §7.3 tool schema
+export const MAX_SUMMARY_LEN = 30;    // PRD §5.2 pocket.summary / §7.3 tool schema
+
+export const clampCollection = (raw) => ({
+  title: String((raw && raw.title) || "").trim().slice(0, MAX_TITLE_LEN) || "收藏的貼文",
+  summary: String((raw && raw.summary) || "").trim().slice(0, MAX_SUMMARY_LEN),
+});
+```
+
+> **15 / 30，不是 30 / 60。** 首版實作截在 30 / 60，是文件值的兩倍，而**同一個檔案的
+> `SAVE_PLACES_TOOL` schema 又對模型說「15 字內」「30 字內」**。兩者脫節時，超長標題只有在
+> 模型失控時才會出現——最難重現的那種 bug，而口袋卡片的版面是照 15 字排的。
+> 三份文件（PRD §5.2／§7.3、本文件、UI spec）與 tool schema 皆為 15 / 30，**以 PRD 為準對齊程式碼**。
+> 回歸測試把 tool schema 的字串與這兩個常數綁在一起，日後改一邊會立刻失敗。
+
 ### 6.5 端點防護對照表
 
 | 措施 | 實作 | 對應測試 |
 |------|------|---------|
-| trip key 存在性檢查 | `GET {SB_URL}/rest/v1/trips?id=eq.<key>&select=id`，headers `apikey` + `Authorization: Bearer <SB_KEY>`。空陣列 → 拒絕呼叫 LLM。**`SB_URL` 或 `SB_KEY` 任一缺失 → 跳過此檢查、只留 IP 限流並記 log**（§6.1）| T-79 |
+| trip key 存在性檢查 | `GET {SB_URL}/rest/v1/trips?id=eq.<key>&select=id`，headers `apikey` + `Authorization: Bearer <SB_KEY>`。空陣列 → 拒絕呼叫 LLM，**回與限流逐字相同的 `reason` 與 `message`**（見 §5.5 末的說明），真正的原因只進 `console.warn`。**`SB_URL` 或 `SB_KEY` 任一缺失 → 跳過此檢查、只留 IP 限流並記 log**（§6.1）| T-79 |
+| **供應商金鑰檢查** | 執行期讀 `process.env`（SDK 自己讀 env，grep 程式碼看不出來）：`anthropic` → `ANTHROPIC_API_KEY`、`gemini` → `GEMINI_API_KEY`。缺 → **`reason: "not_configured"`** + `console.error` 點名變數。排在呼叫供應商之前、降級階梯之前 | 新增（`parse-post.test.js`）|
 | 每 IP 滑動視窗限流 | 記憶體 `Map<ip, number[]>`，20 次/小時。冷啟動重置（防護力弱但免費且有摩擦力，PRD 已認可） | — |
 | 地點數上限 | schema `maxItems: 12` + `clampPlaces` 的 `slice(0,12)` | T-78 |
 | **圖片張數上限** | `images.length > 3` → `too_large` | — |
-| **單張圖片上限** | 任一 `images[i].base64.length > 1_400_000` → `too_large` | — |
-| **圖片總量上限** | `sum(base64.length) > 4_000_000` → `too_large`（Vercel request body 限制內）| — |
+| **單張圖片上限** | 任一 `images[i].base64.length > 4_000_000` → `too_large`（PRD v3.9 §7.5d；API 實際允許 10MB/張）| — |
+| **圖片總量上限** | `sum(base64.length) > 10_000_000` → `too_large`（API 實際允許 32MB/請求）| — |
 | 外部 fetch 逾時 | 全部 6 秒 `AbortSignal.timeout` | — |
 
 > **三道圖片上限的順序是刻意的**：先擋張數（最便宜的檢查）、再擋單張、最後才加總。
-> 三者都在**呼叫 LLM 之前**，也在 trip key 檢查之前——一個 4MB 的 body 不該先去打 Supabase。
+> 三者都在**呼叫 LLM 之前**，也在 trip key 檢查之前——一個 10MB 的 body 不該先去打 Supabase。
 > 前端也會做同一組檢查（frontend §4.6），但後端不得因此省略：前端檢查是體驗，後端檢查是防護。
 
 ---
@@ -783,8 +859,8 @@ export function clampPlaces(list) {
 | **`mergeTrip` 的未知欄位穿透不具交換性** | 對未知欄位採「remote 覆蓋 local」。這是刻意取捨（§5.1.3），實作時必須留註解，否則未來會有人「順手修成對稱」而破壞安全性 |
 | **舊 bundle 會變成唯讀** | `validateTrip` 對 `schemaVersion > SCHEMA_VERSION` fail-closed。本地編輯留在 IndexedDB 不會消失，重新整理後即恢復。F-77 負責把這件事講清楚 |
 | **`_parse-lib.js` 的底線前綴不可省** | Vercel 會把 `api/` 下每個檔案都當成一條路由；`_` 開頭才會被排除 |
-| **環境變數（原顧慮已撤銷）** | **不需要新增任何環境變數、無需手動設定**（PRD v3.7 §7.4 實地查證 Vercel 後台）：`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` 早已存在於 Vercel 專案設定（Production and Preview），且 Vercel 後台變數對 serverless `process.env` 一律可見（`VITE_` 前綴只對 Vite 有意義；同專案 `AERODATABOX_KEY` 即現成佐證）。實作讀取鏈 `process.env.SUPABASE_URL \|\| process.env.VITE_SUPABASE_URL`（KEY 同理），**任一缺失即跳過 trip key 檢查、只留 IP 限流並記 log**，不得因此讓端點整個失效 |
-| **`OCR_MAX` / `OCR_QUALITY` 是「IG 能不能用」的參數，不是細節** | 截圖升為 IG 主路徑後，這組常數決定日文小字讀不讀得出來（壓過頭）與會不會撞每張 1.4MB 上限（壓不夠）。**T-99 為人工實機驗收項**：須用真實 IG 截圖實測，必要時調整常數並**回寫 PRD §7.5**。實作時把兩個常數放在 `src/lib/image.js` 具名匯出，不得散落在元件裡，否則調參要改多處 |
+| **環境變數：Supabase 那組不需設定，但 `ANTHROPIC_API_KEY` 需要（2026-09-03 修正）** | ⚠️ 原本的「不需要新增任何環境變數」**只對 Supabase 那一組成立**。`ANTHROPIC_API_KEY` **Vercel 上並不存在**（2026-09-03 查證：只有 `AERODATABOX_KEY` 與 `VITE_SUPABASE_*`），本文件 v3.1.0 說「v2 航班功能已設在 Vercel」是把它與 `AERODATABOX_KEY` 搞混了。**上線前必須手動新增**，否則端點會回 `not_configured`。以下為 Supabase 那組的原始結論，仍然有效：**不需要新增任何環境變數、無需手動設定**（PRD v3.7 §7.4 實地查證 Vercel 後台）：`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` 早已存在於 Vercel 專案設定（Production and Preview），且 Vercel 後台變數對 serverless `process.env` 一律可見（`VITE_` 前綴只對 Vite 有意義；同專案 `AERODATABOX_KEY` 即現成佐證）。實作讀取鏈 `process.env.SUPABASE_URL \|\| process.env.VITE_SUPABASE_URL`（KEY 同理），**任一缺失即跳過 trip key 檢查、只留 IP 限流並記 log**，不得因此讓端點整個失效 |
+| **`OCR_MAX` / `OCR_QUALITY` 是「IG 能不能用」的參數，不是細節** | 截圖升為 IG 主路徑後，這組常數決定日文小字讀不讀得出來（壓過頭）與會不會撞每張 4MB 上限（壓不夠）。**T-99 已於 2026-09-02 完成**（PRD §7.5d）：定案 `OCR_MAX = 1568` / `OCR_QUALITY = 0.85`，輸出 784×1568、1568 視覺 tokens／張、約 155KB（base64 約 207KB，只用掉單張 10MB 額度的 2%）。**若實作時再調整這兩個常數，須重跑同樣的對照並回寫 PRD §7.5d**。實作時把兩個常數放在 `src/lib/image.js` 具名匯出，不得散落在元件裡，否則調參要改多處 |
 | **多張截圖必須同一次 LLM 呼叫** | PRD §7.5b 硬性。切成多次呼叫會切斷同一則貼文的上下文，並產生多組 `title`／重複地點（理由見 §6.2）。實作時 `resolveSource` 回傳的 `images[]` 直接餵給 `buildImageContent()`，不得在迴圈裡逐張呼叫 |
 | **`@anthropic-ai/sdk` 只在 serverless 端用** | 它進 `dependencies` 不會被打進前端 bundle（`api/` 由 Vercel 另外建置），但實作後必須確認 `dist/` 大小沒有變化 |
 | **IP 限流會被冷啟動重置** | 已知限制。真的被濫用時的下一步是 Supabase Edge Function + 一張計數表，不在本版 |

@@ -4,8 +4,8 @@
 
 :::info
 功能名稱：v3 口袋地點（截圖／貼上收藏 → AI 解析覆核 → 建議日期 → 寫入行程 → 導航）
-版本：**3.1.0**（依 PRD v3.7 / UI spec v3.1 回頭同步）
-最後更新：2026-09-02
+版本：**3.2.0**（**2026-09-03 依 PRD v3.9 回寫**；前版 3.1.0 依 PRD v3.7 / UI spec v3.1 同步）
+最後更新：2026-09-03
 作者：程式開發員
 :::
 
@@ -20,6 +20,22 @@
 > | 5 | `PLACE_WARN_BYTES = 800_000`、`pocket.rawText` / `pocket.pending` 皆已進 PRD，疑點結案 | §4.4.6、§5.4、§8 |
 > | 6 | **F-78 對 IG 的限制裁定 MVP 不解決**：不做 blob 暫存，只誠實標示（S-06b）| §5.2、§5.4 |
 > | 7 | 新增 **T-99**（OCR 參數實測，人工實機）；**T-98 已完成**（結論：截圖為 IG 主路徑）| §7.2 |
+
+> **v3.2.0 同步摘要（2026-09-03 依 PRD v3.9 回寫）**
+>
+> **T-99 已於 2026-09-02 完成**（PRD §7.5d），本文件 v3.1.0 仍寫著實測前的暫定值。
+> §4.6 是 F5「多張截圖管線」的直接實作依據，**這裡的數值錯了會直接做錯**，故整節回寫：
+>
+> | 常數 | v3.1.0（暫定） | **PRD v3.9（實測定案）** |
+> |---|---|---|
+> | `OCR_MAX` | 1024 | **1568** |
+> | `OCR_QUALITY` | 0.7 | **0.85** |
+> | `MAX_SHOT_B64`（每張）| 1_400_000（1.4MB）| **4_000_000（4MB）** |
+> | `MAX_SHOTS_B64_TOTAL`（總量）| 4_000_000（4MB）| **10_000_000（10MB）** |
+>
+> 影響章節：§3（檔案樹註解）、**§4.6**、§7.2（技術難點 10 / 15）、§7.3（T-99 驗收方式）。
+> 另：後端新增 `reason: "not_configured"`（缺供應商金鑰），前端沿用「原樣顯示後端 `message`」的既有處理，
+> **不需新增分支**（見 [cross-check-v3.md](../cross-check-v3.md) §3）。
 
 > 本文件為**增修**，不取代 [app-v2.md](app-v2.md) v1.0.0；v2 的元件結構、`useTrip` 資料流、同步引擎規格全數繼續有效。
 > 涵蓋範圍＝ **PRD §8 的 MVP（P1–P10）**：F-69～F-78、F-81、F-83。
@@ -94,7 +110,7 @@ App.jsx (C)                                   # 🔧 6 tab、?share= 開機處�
     │               #          suggestDays / daysForPlace / normalizeName / capacityCheck
     ├── share.js    # 🆕 parseShareParams / stripShareParams / shortcutPrefix
     │               #    + detectPlatform（PRD §5.3 §6.2 裁定落位;比對 hostname,禁用 includes）
-    ├── image.js    # 🔧 新增 OCR_MAX / OCR_QUALITY（不動既有 THUMB_* 預設）
+    ├── image.js    # 🔧 新增 OCR_MAX = 1568 / OCR_QUALITY = 0.85（不動既有 THUMB_* 預設）
     └── api.js      # 🔧 新增 parsePost()（images[] 契約）
 ```
 
@@ -449,8 +465,8 @@ export function detectPlatform(raw) {
 import { compressImage, OCR_MAX, OCR_QUALITY } from "../lib/image.js";
 
 export const MAX_SHOTS = 3;
-export const MAX_SHOT_B64 = 1_400_000;        // 每張
-export const MAX_SHOTS_B64_TOTAL = 4_000_000; // 總量
+export const MAX_SHOT_B64 = 4_000_000;         // 每張（PRD v3.9 §7.5d;後端 MAX_IMAGE_B64 同值）
+export const MAX_SHOTS_B64_TOTAL = 10_000_000; // 總量（後端 MAX_IMAGES_TOTAL_B64 同值）
 
 // 逐張壓縮。compressImage 回傳的是【data URL】,送出前必須去掉前綴。
 async function addShots(fileList, current) {
@@ -474,9 +490,9 @@ const toImages = (shots) => shots.map((s) => ({
 | 規則 | 規格 |
 |---|---|
 | `<input>` | `<input type="file" accept="image/*" multiple class="hidden">` 包在 `<label>` 內，沿用 `ChecklistCard.jsx:98` 既有模式，**不自創檔案選擇器** |
-| 壓縮參數 | `OCR_MAX = 1024` / `OCR_QUALITY = 0.7`（`image.js` 具名常數）。**不動** `THUMB_MAX = 320`／`THUMB_QUALITY = 0.6`（購物清單照舊）|
-| 逐張而非 `Promise.all` | `compressImage` 每張都建立一個 canvas 與 `Image`；iPhone 上同時解三張 1024px 圖容易造成記憶體尖峰與掉幀。**逐張處理並顯示「處理中…」**（UI spec C-30 規格），使用者體感差異可忽略 |
-| 前端三道上限 | 張數 > 3 → 只收前 N 張並提示；單張 `base64 > 1.4MB` 或總量 `> 4MB` → **不送出**，直接顯示 `too_large` 文案。**後端仍要各自檢查一次**（前端是體驗、後端是防護）|
+| 壓縮參數 | **`OCR_MAX = 1568` / `OCR_QUALITY = 0.85`**（`image.js` 具名常數，T-99 實測定案，PRD §7.5d）。**不動** `THUMB_MAX = 320`／`THUMB_QUALITY = 0.6`（購物清單照舊）。1568 正好是 `claude-haiku-4-5` 所屬 Standard tier 的原生上限：再大會被伺服器端縮一次（等於重採樣兩次，比一次縮到位更糟），再小是白白丟字 |
+| 逐張而非 `Promise.all` | `compressImage` 每張都建立一個 canvas 與 `Image`；iPhone 上同時解三張 1568px 圖容易造成記憶體尖峰與掉幀。**逐張處理並顯示「處理中…」**（UI spec C-30 規格），使用者體感差異可忽略 |
+| 前端三道上限 | 張數 > 3 → 只收前 N 張並提示；單張 `base64 > 4MB` 或總量 `> 10MB` → **不送出**，直接顯示 `too_large` 文案。**後端仍要各自檢查一次**（前端是體驗、後端是防護）。實務上這兩道幾乎不可達：1568/0.85 的截圖約 155KB、base64 約 207KB，只用掉單張額度的 **5%** |
 | **不進 jsonb** | 壓縮後的 dataUrl 只活在 `IngestSheet` 的本地 state 與 request body 裡。**任何情況都不得寫進 `trip.data`**（PRD §5.5 硬性）——這也是 F-78 離線存不下截圖的原因 |
 | 移除 | 每張可獨立移除（`aria-label="移除截圖"`，命中區 44px），移除後重算總量 |
 
@@ -913,12 +929,12 @@ const [tab, setTab] = useState(() => (share ? "places" : "trip"));
 | 7 | **`pockets`/`places` 誤入 `dedupeByContent` 會造成永久資料遺失** | `normalizeTrip` 完全不碰這兩個欄位，並在程式碼留下註解說明理由（後端文件 §5.2）|
 | 8 | **badge 與行程可能不同步** | 不存 `usedIn`；badge 由 `daysForPlace()` 每次 render 反查，資料上是同一份（DDR-23／T-83）|
 | 9 | **解析失敗是常態不是例外**（IG 幾乎必失敗）| 失敗不換頁、不清空；焦點**依平台分流**：一般模式送貼文文字欄（S-13）、IG 模式送 C-30 截圖選擇器（S-21）。依 `reason` × 模式給文案（DDR-11）。**v3.0 一律聚焦文字欄是錯的**——那是把使用者推回一個做不到的動作 |
-| 10 | **截圖讀不出日文店名 → 直接決定 IG 能不能用** | `image.js` 新增 `OCR_MAX = 1024` / `OCR_QUALITY = 0.7`，**不動**既有 `THUMB_MAX = 320`（購物清單縮圖照舊）。截圖升為主路徑後這組參數不再是細節，**T-99 須用真實 IG 截圖實測**，必要時調參並回寫 PRD §7.5 |
+| 10 | **截圖讀不出日文店名 → 直接決定 IG 能不能用** | `image.js` 新增 **`OCR_MAX = 1568` / `OCR_QUALITY = 0.85`**，**不動**既有 `THUMB_MAX = 320`（購物清單縮圖照舊）。**T-99 已於 2026-09-02 完成**（PRD §7.5d）：1024/0.7 下灰色小字（區域／備註）明顯發糊，1568/0.85 下店名與小字皆銳利。**若日後再調這兩個常數，須重跑同樣的對照並回寫 PRD §7.5d** |
 | 11 | **`onGoTab` 需要穿三層** | `App` → `PocketView` → `DayPickerSheet` / `CapacityNotice`。以單一 `onGoTab(tabId)` prop 傳遞，不引入 context（規模不值得）|
 | 12 | **模式切換不能重建 DOM** | 欄位順序用 flex `order` 切換而非條件渲染兩套 JSX。iOS Safari 在 DOM 重建時會收起鍵盤，且 `<input type="file">` 的已選檔案狀態會遺失（UI spec §8）。捲動位置須維持在連結欄可見，不得因重排把使用者捲到面板底部 |
 | 13 | **`mode` 若做成 state 會出現「連結已是 IG、版面還沒換」的中間畫面** | `mode` 一律是 `detectPlatform(url)` 的**衍生值**，無 `useState`／`useEffect`（§5.2）。可逆性與「不搶焦點」因此是結構上的保證，不靠額外邏輯 |
 | 14 | **`?ref=instagram.com` 誤判** | `detectPlatform` **比對 hostname 並以 `(^\|\.)…$` 錨定，禁用 `includes`**（§4.5）。誤判的代價是把使用者送去截圖死路，或反之讓她按一次註定失敗的「解析看看」 |
-| 15 | **三張 1024px 圖同時壓縮的記憶體尖峰** | `compressImage` **逐張** await，不用 `Promise.all`；壓縮中顯示「處理中…」且不阻塞面板其他欄位（§4.6）|
+| 15 | **三張 1568px 圖同時壓縮的記憶體尖峰** | `compressImage` **逐張** await，不用 `Promise.all`；壓縮中顯示「處理中…」且不阻塞面板其他欄位（§4.6）|
 | 16 | **`compressImage` 回傳 data URL，契約要純 base64** | 送出前以 `dataUrl.slice(indexOf(",") + 1)` 去前綴、`mime` 固定 `"image/jpeg"`（§4.6 `toImages`）。**這是最容易漏掉的一行**——漏了會讓後端拿到 `data:image/jpeg;base64,...` 當 base64，LLM 直接讀圖失敗 |
 | 17 | **只帶 IG 連結時不得送出** | 那次請求 100% 落到 `need_text_or_image`，且白白吃掉每 IP 20 次/小時的額度（DDR-27）。主按鈕改為「選擇截圖」＝開檔案選擇器；要硬送只能按逃生口「還是先試試這個連結」|
 
@@ -947,7 +963,7 @@ const [tab, setTab] = useState(() => (share ? "places" : "trip"));
 | T-86（建置產物）| 需要 build | `npm run build && grep -c "grid-cols-6" dist/assets/*.css`（**可寫成 CI 檢查，建議做**）＋ 375px 實測每格 ≥ 44px |
 | **T-96**（捷徑 URL）| 需要 iOS 實機 | 裝捷徑 → IG 分享 → 確認開到同一份行程、網址列無 `share=` 殘留 |
 | **T-98**（IG 主路徑實機驗證）| **本質上是人工實機**（PRD 明列為驗收關鍵項）| ✅ **已於 2026-09-02 由 CEO 完成**：結論為 IG caption 無法選取複製，**截圖升為 IG 主路徑**，已回寫 PRD v3.6／UI spec v3.1／本文件 v3.1.0。SA 驗收時只需確認 UI 是否已依此結論分流（S-20／S-21 是否存在且正確） |
-| **T-99**（OCR 參數實測，v3.1 新增）| **本質上是人工實機**（需真實 IG 截圖與人眼判讀日文）| 用 3 則真實日本旅遊 IG 貼文各截 1～3 張（含展開的 caption 與影片字幕），以 `OCR_MAX = 1024` / `OCR_QUALITY = 0.7` 壓縮後送 `/api/parse-post`：① 日文店名是否正確讀出 ② 每張 base64 是否 ≤ 1.4MB、總量 ≤ 4MB。**讀不出 → 調高 `OCR_MAX` 並回寫 PRD §7.5；撞上限 → 調低 `OCR_QUALITY`。** 兩者是對衝的，必須實測而非推算 |
+| **T-99**（OCR 參數實測）| **本質上是人工實機**（需真實 IG 截圖與人眼判讀日文）| **✅ 已於 2026-09-02 完成，結論見 PRD §7.5d：`OCR_MAX = 1568` / `OCR_QUALITY = 0.85`。** 端點接起來後仍須用實際回傳結果複驗一次——T-99 的判讀者是 Opus 而非 `claude-haiku-4-5`，Haiku 對細小文字較弱（這正是選 1568 而非 1024、把餘裕留給較弱模型的理由）。複驗方式：3 則真實日本旅遊 IG 貼文各截 1～3 張（含展開的 caption 與影片字幕）送 `/api/parse-post`，看 ① 日文店名是否正確讀出 ② 每張 base64 ≤ 4MB、總量 ≤ 10MB（實測約 207KB／張，不可能撞到）。**若需再調參，須重跑對照並回寫 PRD §7.5d** |
 
 > **T-98／T-99 都不是 Vitest 能覆蓋的項目**：前者需要 iPhone 上的 IG App 與真人手指，後者需要真實截圖與人眼判讀日文小字。
 > 兩者皆列為**人工實機驗收**，且 T-99 的結論可能回頭改常數——實作時把 `OCR_MAX` / `OCR_QUALITY` 集中在 `src/lib/image.js`，調參只需改一處。
