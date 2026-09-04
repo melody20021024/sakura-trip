@@ -6,6 +6,13 @@
 |---|---|---|---|
 | UI v3.0 | 2026-09-01 | PRD v3.3.1 | 初版：P-06、C-18~C-28、S-01~S-19、DDR-09~DDR-24 |
 | **UI v3.1** | **2026-09-02** | **PRD v3.6（T-98 實機驗證）** | **IG 的主／輔路徑對調：截圖升為主路徑，IngestSheet 改為依平台分流** |
+| **UI v3.3** | **2026-09-03** | **PRD v3.9 §7.5d（T-99 實機驗證）** | **常數同步：截圖壓縮參數改為 `OCR_MAX = 1568` / `OCR_QUALITY = 0.85`，單張上限 1.4MB → 4MB、總量 4MB → 10MB。無設計變更** |
+
+> **v3.3 只做一件事：把 §6.1.1 C-30、§10 常數表、§12.3 疑點 ⑦ 裡殘留的舊壓縮參數換成 PRD v3.9 §7.5d 的 T-99 實測定案值。**
+> **為什麼是 1568 而不是更大**：`claude-haiku-4-5` 屬 Anthropic vision 的 **Standard tier，最長邊上限 1568px、視覺 token 上限 1568**（視覺 token = `⌈寬/28⌉ × ⌈高/28⌉`）。
+> 送更大的圖不會更清楚 —— 會被**伺服器端再縮一次**，等於重採樣兩次，日文小字反而更糊。1568 正好是模型原生上限，壓到這裡是「一次縮到位」。
+> 實測 1568/q0.85 輸出 784×1568、155KB（base64 ≈ 207KB），只用掉單張 10MB 額度的 **2%** —— 檔案大小從來不是瓶頸，所以舊的 1.4MB／4MB 上限一併放寬。
+> 舊的 1024/q0.7 輸出 512×1024，日文店名讀得出來，但**灰色小字（區域／備註）明顯發糊**。
 
 ### 0.1 為什麼要改：一個實機測試推翻了設計前提
 
@@ -351,11 +358,12 @@ function detectPlatform(raw){
 |---|---|
 | 實作 | `<label>` 包 `<input type="file" accept="image/*" multiple class="hidden">`，沿用 `ChecklistCard.jsx:98` 既有模式（不自創檔案選擇器）。**`multiple` 為 v3.2 新增** |
 | 張數 | **最多 3 張**（PRD §7.5b）。已達 3 張時選擇區轉為停用態並顯示「已達上限 3 張」，仍可逐張移除後再加 |
+| 大小上限 | 壓縮後**每張 base64 ≤ 4MB、總量 ≤ 10MB**（PRD v3.9 §7.5b／§7.5d）。以實測 207KB/張推算，正常截圖不可能觸及；超限時走 `too_large`（見下方失敗文案） |
 | `emphasis="primary"`（IG 模式）| 整塊 `min-h-24`（96px）、`bg-rose-50 border-2 border-rose-300 text-rose-600 rounded-2xl`、置中 24px 相機圖示 + 「**選截圖**」，下方 `--t-micro` 副標「caption 分兩三屏就多截幾張，最多 3 張」 |
 | `emphasis="secondary"`（一般模式）| 高 44px、`border border-dashed border-pink-200 text-rose-300 rounded-xl`、「📷 或選截圖」 |
 | 已選檔 | **橫向排列的 40×40 縮圖列**，每張右上 ✕（`aria-label="移除第 N 張截圖"`，命中區 44px）。縮圖列上方顯示「已選 N 張」。**IG 模式選完仍維持 primary 外觀**，不縮成小按鈕（它還是這一步的主角）|
 | 順序 | 縮圖依選取順序排列，**順序即送出順序** —— 後端會標「第 N 張（共 M 張）」給模型（PRD §7.5c），所以順序有意義。MVP 不提供拖曳重排，使用者可移除後重選 |
-| 壓縮 | **逐張**壓到 `OCR_MAX = 1024` / `OCR_QUALITY = 0.7`（PRD §7.5，**不動購物清單的 320px 預設**）。壓縮中該張縮圖顯示「處理中…」，不阻塞面板其他欄位。⚠ `compressImage()` 回傳的是 **data URL**，送出前必須 strip `data:image/jpeg;base64,` 前綴（PRD §7.5a 陷阱 1）|
+| 壓縮 | **逐張**壓到 `OCR_MAX = 1568` / `OCR_QUALITY = 0.85`（**PRD v3.9 §7.5d T-99 實測定案**，**不動購物清單的 320px / q0.6 預設**）。典型 IG 截圖壓後為 **784×1568、約 155KB**（base64 ≈ 207KB、1568 視覺 token/張）。壓縮中該張縮圖顯示「處理中…」，不阻塞面板其他欄位。⚠ `compressImage()` 回傳的是 **data URL**，送出前必須 strip `data:image/jpeg;base64,` 前綴（PRD §7.5a 陷阱 1）|
 | 觸控 | 兩種外觀皆 ≥ 44px；`aria-label="選擇截圖"` |
 
 **驗證規則（v3.1 修訂）**
@@ -807,7 +815,7 @@ badge 文字由 `daysForPlace(placeId, days)` **即時反查**，不存 `usedIn`
 | C-16 ConfirmSheet（增修）| `components/ConfirmSheet.jsx` — **加選填 `subtitle` prop**，預設值＝現有硬寫字串 | `#confirmSheet` |
 | （純函式） | `lib/places.js`：`placeToItem` / `pocketBytes` / `dedupeAgainstSaved` / `suggestDays` / `daysForPlace` | — |
 | **（純函式，v3.1）** | **`lib/share.js`：`parseShareParams()` / `shortcutPrefix(tripKey)`**（F-81／F-83，PRD v3.5 §6.2 補列）<br/>**＋ 本稿提議的 `detectPlatform(url)`（§6.1.0）——落位待技術總監確認，見 §12.3 ⑧** | — |
-| （常數） | `lib/schema.js`：`PLACE_BUDGET_BYTES = 900_000`（擋下）／**`PLACE_WARN_BYTES = 800_000`（黃字預警，PRD v3.5 §5.3 正式定義）**；`lib/image.js`：`OCR_MAX = 1024` / `OCR_QUALITY = 0.7` | — |
+| （常數） | `lib/schema.js`：`PLACE_BUDGET_BYTES = 900_000`（擋下）／**`PLACE_WARN_BYTES = 800_000`（黃字預警，PRD v3.5 §5.3 正式定義）**；`lib/image.js`：**`OCR_MAX = 1568` / `OCR_QUALITY = 0.85`（PRD v3.9 §7.5d，T-99 實測定案）** | — |
 | （re-export） | `views/places/constants.js` → `views/trip/constants.js` 的 `ITEM_TYPES` | — |
 
 ### 12.2 功能 ↔ 畫面對照（供 SA 驗收查表）
@@ -844,4 +852,4 @@ badge 文字由 `daysForPlace(placeId, days)` **即時反查**，不存 `usedIn`
 | **⑨**<br/>🆕 v3.1<br/>**（會影響 F-78 的實際價值）** | PRD §4.2 F-78 離線暫存 vs §5.5「圖片 bytes 絕不進 trip jsonb」 | **IG 主路徑改成截圖之後，F-78 對 IG 幾乎失去意義。** 離線時能存下來的只有 `sourceUrl` 與 `rawText`（文字），**截圖存不下來**（存圖片 bytes 違反 §5.5 硬性規定，且會直接吃掉 1MB jsonb 上限）。也就是說：離線時收藏一則 IG 貼文，回線後使用者**還是要重新截一次圖或重找那張圖** | 本稿的處理：① §6.1.5 離線橫幅**必須誠實加註**「截圖沒辦法離線保存，回到網路後請再選一次」② §6.2 新增 **S-06b**，來源為 IG 的待解析卡片按鈕文案改為「**補一張截圖再解析**」而非「重新解析」。<br/>**這是誠實地標示限制，不是解決它。** 真要解決需要 IndexedDB 暫存圖片 blob（Dexie 已在專案內，但屬新機制），請技術總監裁定是否值得——本稿判斷 **MVP 不值得**（離線收藏是低頻情境） |
 | **⑩**<br/>🆕 v3.1 | PRD §7.1 `/api/parse-post` 契約：`imageBase64` 為**單數** | 清單型 IG 貼文（「福岡三日必吃美食」這類）的 caption 展開後**常常超過一屏**，一張截圖裝不下全部店名，但契約只收一張圖 | **✅ 已裁定（PRD v3.7 §7.5b，2026-09-02）：擴充為 `images[]`，上限 3 張。** 理由是本專案的動機範例就是列 5 家店的貼文，收單張會讓最典型的案例失敗，而擴充成本極低（3 張約 8.2k input tokens，USD $0.01 以下）。<br/>本稿 v3.2 已據此修訂 C-30：`multiple`、最多 3 張、顯示「已選 N 張」、逐張可移除、順序即送出順序。 |
 | **⑪**<br/>🆕 v3.1<br/>（PRD 已列為待補測）| PRD §4.2 T-98 引言區塊「建議 CEO 補測一項」 | ① 清單型貼文的店名常在**作者置頂留言**，留言區是否可複製？② iOS「**實況文字**」能否在截圖上直接選字？兩者若可行，都是比截圖更乾淨的取字路徑 | 本稿**暫不把這兩條寫進畫面文案**（未實測的引導寫上去就是新的假出口，正是 T-98 教訓）。<br/>目前只在 S-20 的折疊文字欄 placeholder 保守寫「作者置頂留言、或你自己打的店名也可以」——這句在兩種結果下都成立。**待 CEO 補測後，我再依結果補一條明確引導** |
-| ⑦<br/>**⚠️ 重要性升高** | PRD §4.2 F-71 vs §7.4／§7.5 | F-71 說「圖片超過 1MB → `too_large`」，但 §7.5 要求前端先壓到 1024px / q0.7，壓完幾乎不可能超過 1MB | 非矛盾，只是 `too_large` 在實務上近乎不可達。**但 v3.6 把截圖升為 IG 主路徑後，`OCR_MAX = 1024` / `OCR_QUALITY = 0.7` 這組壓縮參數從「輔路徑的細節」變成「IG 能不能用」的關鍵**：壓過頭會讀不出日文小字，壓不夠會撞 1.4MB base64 上限。建議 SA 用真實 IG 截圖實測這組參數（可併入 T-98 的複測），若讀不出日文店名須調高 `OCR_MAX` |
+| ⑦<br/>**✅ 已裁定** | PRD §4.2 F-71 vs §7.4／§7.5 | 早期 F-71 說「圖片超過 1MB → `too_large`」，而 §7.5 要求前端先壓到 1024px / q0.7，壓完幾乎不可能超過 1MB —— `too_large` 在實務上近乎不可達。截圖升為 IG 主路徑後，這組壓縮參數從「輔路徑的細節」變成「IG 能不能用」的關鍵：壓過頭會讀不出日文小字 | **✅ 已裁定（PRD v3.9 §7.5d，T-99 於 2026-09-02 實測完成）：`OCR_MAX` 1024 → 1568、`OCR_QUALITY` 0.7 → 0.85**（1568 是 `claude-haiku-4-5` 的 Standard tier 原生上限，再大只會被伺服器端二次縮放）。**每張上限 1.4MB → 4MB、總量 4MB → 10MB**（實測單張僅 ≈207KB base64，佔 10MB 額度的 2%，大小從不是瓶頸）。本稿 v3.3 已同步 §6.1.1 C-30 與 §10 常數表 |
