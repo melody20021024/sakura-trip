@@ -129,6 +129,82 @@ describe("缺供應商金鑰 → not_configured（不是 rate_limited）", () =>
   });
 });
 
+describe("關卡順序:金鑰檢查必須排在限流與 trip 檢查【之後】（PRD §7.4）", () => {
+  // 這個順序目前只靠人記得。把金鑰檢查上移一行不會弄壞上面任何一個測試,
+  // 但那會讓「沒設金鑰的部署」變成一個免費的探測窗口:攻擊者不必消耗額度、
+  // 也不必存在一個真的 trip key,就能一直打這支端點。以下三個情境把它釘住。
+  //
+  // ⚠️ 測試陷阱:`_parse-lib.js` 的限流 Map 是模組層級的,同一個 process 共用。
+  // 少了 loadHandler() 裡的 vi.resetModules(),前一個 describe 吃掉的額度會留下來,
+  // 於是「有效 trip + 無金鑰」會先被限流擋掉而回 rate_limited ——
+  // 斷言 not_configured 的那個測試會紅得很明顯,但斷言 rate_limited 的那兩個
+  // 會【通過】,只是通過的理由是錯的(測到限流,而不是測到順序)。
+  const noKey = () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    vi.stubEnv("GEMINI_API_KEY", "");
+  };
+
+  it("有效 trip + 無金鑰 → not_configured（金鑰檢查確實有跑到）", async () => {
+    noKey();
+    const handler = await loadHandler();
+    expect((await call(handler, OK_TRIP)).body.reason).toBe("not_configured");
+  });
+
+  it("不存在的 trip + 無金鑰 → rate_limited(證明 trip 檢查在金鑰檢查之前)", async () => {
+    noKey();
+    vi.stubEnv("SUPABASE_URL", "https://sb.test");
+    vi.stubEnv("SUPABASE_ANON_KEY", "anon");
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => [] })));
+    const handler = await loadHandler();
+    const res = await call(handler, { ...BARE_TRIP, trip: "does-not-exist" });
+    // 若金鑰檢查被上移,這裡會變成 not_configured ——
+    // 那等於告訴外面「這支端點還活著」,而且完全不用有效的 trip key。
+    expect(res.body.reason).toBe("rate_limited");
+  });
+
+  it("已限流的 IP + 無金鑰 → rate_limited(證明限流在金鑰檢查之前)", async () => {
+    noKey();
+    const handler = await loadHandler();   // resetModules → 額度歸零,見上方陷阱說明
+    let res;
+    for (let i = 0; i <= 20; i++) res = await call(handler, BARE_TRIP);
+    // 若金鑰檢查被上移,缺金鑰的部署上限流就永遠不會生效:
+    // 每一次請求都在扣額度之後才被 not_configured 攔下,額度形同虛設。
+    expect(res.body.reason).toBe("rate_limited");
+  });
+});
+
+describe("供應商呼叫失敗 → upstream_error(不是 rate_limited)", () => {
+  it("供應商拋錯時回 upstream_error,且不與限流共用 reason", async () => {
+    vi.stubEnv("PARSE_PROVIDER", "gemini");
+    vi.stubEnv("GEMINI_API_KEY", "k-present");
+    // 供應商那一次 fetch 直接拒絕 = 上游不通。這是這支測試唯一預期的網路呼叫。
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNRESET"); }));
+    const handler = await loadHandler();
+    const res = await call(handler, OK_TRIP);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.reason).toBe("upstream_error");
+    expect(res.body.message).toMatch(/暫時不通/);
+  });
+
+  it("upstream_error 的訊息與限流的訊息不同(兩者本來就不該混在一起)", async () => {
+    vi.stubEnv("PARSE_PROVIDER", "gemini");
+    vi.stubEnv("GEMINI_API_KEY", "k-present");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNRESET"); }));
+    const handler = await loadHandler();
+    const upstream = await call(handler, OK_TRIP);
+
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-present");
+    vi.stubEnv("PARSE_PROVIDER", "anthropic");
+    const h2 = await loadHandler();
+    let limited;
+    for (let i = 0; i <= 20; i++) limited = await call(h2, BARE_TRIP);
+
+    expect(limited.body.reason).toBe("rate_limited");
+    expect(upstream.body.reason).not.toBe(limited.body.reason);
+    expect(upstream.body.message).not.toBe(limited.body.message);
+  });
+});
+
 describe("trip 不存在與限流對外完全不可區分（中-2）", () => {
   // 兩者只要有一點不同,這支端點就成了「這個 trip key 存不存在」的探測器。
   async function rateLimitedBody() {

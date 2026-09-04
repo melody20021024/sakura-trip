@@ -4,8 +4,8 @@
 
 :::info
 功能名稱：v3「口袋地點」後端／資料層（遷移前向相容修正、schema v5、`/api/parse-post`）
-版本：**3.2.0**（**2026-09-03 依 PRD v3.9 回寫**；前版 3.1.0 依 PRD v3.7 / UI spec v3.1 同步）
-最後更新：2026-09-03
+版本：**3.2.1**（**2026-09-04 依 PRD v3.10 回寫**；前版 3.2.0 依 PRD v3.9、3.1.0 依 PRD v3.7 / UI spec v3.1）
+最後更新：2026-09-04
 作者：程式開發員
 :::
 
@@ -22,7 +22,7 @@
 
 > **v3.2.0 同步摘要（2026-09-03 依 PRD v3.9 回寫）**
 >
-> 以下五處是 PRD v3.7～v3.9 更新後留在本文件的殘留，已回寫。**PRD v3.9 為唯一準則。**
+> 以下五處是 PRD v3.7～v3.9 更新後留在本文件的殘留，已回寫。（當時以 PRD v3.9 為準；**現行唯一準則是 v3.10**，見下方 v3.2.1 摘要。）
 >
 > | # | 原本寫的 | 現在（PRD v3.9） | 影響章節 |
 > |---|---|---|---|
@@ -36,13 +36,28 @@
 > **`max_tokens` 2048 → 4096**（見 §6.3 的說明與 [questions.md](../questions.md) Q-12）、
 > **`PARSE_MODEL` 拆成 `PARSE_MODEL_ANTHROPIC` / `PARSE_MODEL_GEMINI`**。
 
+> **v3.2.1 同步摘要（2026-09-04 依 PRD v3.10 回寫）**
+>
+> **上游已由 v3.9 進到 v3.10**：§7.5c 裁定 Q-12（`max_tokens` 2048 → **4096**，並須檢查 `stop_reason`），
+> §7.1／§7.4 裁定 Q-13（補 `bad_request` / `not_configured`，並明訂「限流」與「trip 不存在」必須逐字不可區分）。
+> 本次把全文的版本引用由 v3.9 對齊到 **v3.10**，並清掉 v3.2.0 回寫時漏掉的四處文件↔實作矛盾。
+>
+> | # | 位置 | 原本寫的 | 現在（以 main 上的 `api/parse-post.js`／`api/_parse-lib.js` 為準）|
+> |---|---|---|---|
+> | 1 | §6.3 pseudo-code | `max_tokens: 2048`，且**沒有** `stop_reason` 檢查 | `max_tokens: 4096` + `stop_reason === "max_tokens"` 時 `console.warn`。**這處特別諷刺**：4096 正是 v3.10 §7.5c 裁定的核心數字，同一份文件的 §6.3 說明段（「由 2048 提高到 4096」）與 §6.3 末的模型參數說明都已經寫對，唯獨那段給人照抄的骨架還留著 2048 |
+> | 2 | §6.3 pseudo-code | `model: MODEL`（`MODEL = process.env.PARSE_MODEL`）| `modelFor(provider)`：`PARSE_MODEL_ANTHROPIC` / `PARSE_MODEL_GEMINI`，`PARSE_MODEL` 僅為 fallback —— 與同文件 §6.1 的環境變數表一致 |
+> | 3 | §6.3 pseudo-code | `MAX_IMAGES_B64_TOTAL` | `MAX_IMAGES_TOTAL_B64`（值 10_000_000 正確，只有名字對不上實作）|
+> | 4 | §5.5 pseudo-code、§6.5 錯誤碼表 | 供應商呼叫失敗回 `need_text_or_image`（骨架）／併進 `rate_limited`（表格）| **`upstream_error`**（新增，見 §6.5 說明）|
+>
+> 另新增：§5.5／§6.1 明寫「金鑰檢查排在限流與 trip 檢查之後」是**硬性順序**，並已有回歸測試鎖住。
+
 > 註：本專案無 NestJS/Prisma。「後端」＝ **Supabase BaaS（Postgres jsonb + Realtime）** ＋ **Vercel Serverless Functions**。
 > 合併／遷移邏輯執行在前端，但屬**多客戶端共享契約**，依 v2 慣例統一由本文件管轄（見 [sync-and-apis.md](sync-and-apis.md) §5 前言）。
 > 本文件為**增修**，不取代 `sync-and-apis.md` v1.0.0；該文件的 v2 契約全數繼續有效。
 
 ## 1. 相關連結
 
-- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.9**，F-69～F-78、F-81、F-83；§2 Phase 0、§5 資料模型、§7 端點規格與 **§7.5b 多張截圖**、**§7.5d OCR 參數實測結果**、§10 測試規則含 **T-99**）
+- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.10**，F-69～F-78、F-81、F-83；§2 Phase 0、§5 資料模型、§7 端點規格與 **§7.5b 多張截圖**、**§7.5d OCR 參數實測結果**、§10 測試規則含 **T-99**）
 - UI 規範：[../../02-Design/ui-spec-v3-pocket.md](../../02-Design/ui-spec-v3-pocket.md)（**v3.1**，依平台分流、C-30 ShotPicker）
 - UI 原型：[../../02-Design/prototype-v3-pocket.html](../../02-Design/prototype-v3-pocket.html)
 - 前端設計文件：[../frontend/pocket-v3.md](../frontend/pocket-v3.md)
@@ -438,12 +453,16 @@ sequenceDiagram
     API->>API: ③ 每 IP 滑動視窗限流（20 次/小時）
     API->>API: ④ images 檢查：張數 ≤ 3、每張 b64 ≤ 4MB、總量 ≤ 10MB
     API->>API: ④b 供應商金鑰檢查（缺 → 200 { ok:false, reason:"not_configured" }）
+    Note over API: ④b 必須排在 ③ 限流與 ④ trip 檢查【之後】——<br/>在前面的話,缺金鑰就成了繞過限流的免費探測窗口
     API->>API: ⑤ 降級階梯 → 有圖先讀圖,否則 text / oEmbed / og
     alt 全部失敗
         API-->>UI: 200 { ok:false, reason:"need_text_or_image" }
     end
     API->>LLM: ⑥ 強制 tool-use（save_places）—— 多張截圖放進同一次呼叫
-    LLM-->>API: tool_use.input
+    LLM-->>API: tool_use.input（stop_reason === "max_tokens" 時記 warn）
+    alt 供應商呼叫拋錯
+        API-->>UI: 200 { ok:false, reason:"upstream_error" }
+    end
     API->>API: ⑦ 清洗 + slice(0,12) + category enum 校正
     alt places 長度為 0
         API-->>UI: 200 { ok:false, reason:"no_places" }
@@ -455,11 +474,17 @@ sequenceDiagram
 
 ```js
 const PROVIDER = process.env.PARSE_PROVIDER || "anthropic";
-const MODEL = process.env.PARSE_MODEL || "claude-haiku-4-5";
+// 一個供應商一個覆寫變數（§6.1）。`PARSE_MODEL` 原本兩家共用,切到 gemini 時
+// 忘了改就會把 claude 的模型字串送給 Google,收到看不出原因的 404;保留為 fallback。
+const MODEL_DEFAULTS = { anthropic: "claude-haiku-4-5", gemini: "gemini-2.0-flash" };
+const modelFor = (provider) =>
+  (provider === "gemini" ? process.env.PARSE_MODEL_GEMINI : process.env.PARSE_MODEL_ANTHROPIC)
+  || process.env.PARSE_MODEL
+  || MODEL_DEFAULTS[provider] || MODEL_DEFAULTS.anthropic;
 const MAX_PLACES = 12;
 const MAX_IMAGES = 3;                      // PRD §7.5b:張數上限
-const MAX_IMAGE_B64 = 4_000_000;           // 每張（PRD v3.9 §7.5d;API 實際允許 10MB/張）
-const MAX_IMAGES_B64_TOTAL = 10_000_000;   // 總量（API 實際允許 32MB/請求）
+const MAX_IMAGE_B64 = 4_000_000;           // 每張（PRD v3.10 §7.5d;API 實際允許 10MB/張）
+const MAX_IMAGES_TOTAL_B64 = 10_000_000;   // 總量（API 實際允許 32MB/請求）
 const RATE_LIMIT = { max: 20, windowMs: 3_600_000 };
 const hits = new Map();                    // IP → number[]（冷啟動會重置,已知且接受）
 
@@ -476,7 +501,7 @@ export default async function handler(req, res) {
     return fail("too_large", "一次最多 3 張截圖,請移除幾張再試。");
   if (shots.some((i) => i.base64.length > MAX_IMAGE_B64))
     return fail("too_large", "有一張截圖太大了,換一張或改貼文字。");
-  if (shots.reduce((n, i) => n + i.base64.length, 0) > MAX_IMAGES_B64_TOTAL)
+  if (shots.reduce((n, i) => n + i.base64.length, 0) > MAX_IMAGES_TOTAL_B64)
     return fail("too_large", "這幾張截圖加起來太大了,移除一張再試。");
 
   // 限流與「trip 不存在」必須回【同一個 reason 且同一段 message】—— 見本節末說明。
@@ -504,7 +529,9 @@ export default async function handler(req, res) {
       ? await callGemini(ladder, cityHint)
       : await callAnthropic(ladder, cityHint);
   } catch (e) {
-    return fail("need_text_or_image", "解析服務暫時不可用,請稍後再試或直接自己新增地點。");
+    // 供應商錯誤有自己的 reason,不併進 rate_limited（本節末說明）。
+    console.error("[parse-post] provider", PROVIDER, e?.message || e);
+    return fail("upstream_error", "解析服務暫時不通,等一下再試。你貼的內容還留著。");
   }
 
   const places = clampPlaces(raw.places);              // §6.4,純函式,可測
@@ -539,7 +566,7 @@ export default async function handler(req, res) {
 - **Endpoint**：`POST /api/parse-post`
 - **Description**：把社群貼文的連結／文字／**最多 3 張截圖**解析成結構化地點清單。
 - **費用**：Anthropic `claude-haiku-4-5`（input $1 / output $5 per MTok），約 1¢/次；100 次/月 ≈ **USD $1**。`PARSE_PROVIDER=gemini` 可切到 Gemini Flash 免費層 → **$0**。
-  **多張截圖的成本（PRD v3.9 §7.5d 實測值）**：`OCR_MAX = 1568` / `OCR_QUALITY = 0.85` 壓出的 784×1568 截圖為 **1568 視覺 tokens／張**（1568 正好是 `claude-haiku-4-5` 所屬 Standard tier 的上限，再大會被伺服器端縮一次），3 張約 4.7k input tokens ≈ **USD $0.005／次**，仍在每月 $1 的上限內。
+  **多張截圖的成本（PRD v3.10 §7.5d 實測值）**：`OCR_MAX = 1568` / `OCR_QUALITY = 0.85` 壓出的 784×1568 截圖為 **1568 視覺 tokens／張**（1568 正好是 `claude-haiku-4-5` 所屬 Standard tier 的上限，再大會被伺服器端縮一次），3 張約 4.7k input tokens ≈ **USD $0.005／次**，仍在每月 $1 的上限內。
 - **環境變數**
 
 | 變數 | 必要性 | 說明 |
@@ -555,9 +582,13 @@ export default async function handler(req, res) {
 > **缺金鑰必須壞得明顯（2026-09-03 新增）**：`new Anthropic()` 由 SDK 內部讀 `process.env`，
 > 因此**無法用 grep 程式碼判斷變數有沒有設**，必須在**執行期**檢查。缺少時直接回
 > **`reason: "not_configured"`**、訊息「解析服務尚未設定金鑰,請聯絡管理者。」，並 `console.error`
-> 點名缺的是哪一個變數。**不得讓它落進 `catch` 變成 `rate_limited`「解析服務暫時不通」**——
+> 點名缺的是哪一個變數。**不得讓它落進 `catch` 變成 `upstream_error`「解析服務暫時不通」**——
 > 那會和網路抖動、真的限流混成一團，是最難查的那種故障。檢查點在**呼叫供應商之前**、
 > 降級階梯之前（省掉註定白做的外部 fetch），在限流與 trip key 檢查之後（既有防護順序不變）。
+> **這個順序本身是硬性的**：金鑰檢查若排到限流前面，一個沒設金鑰的部署上限流就永遠不會生效
+> —— 每個請求都在扣額度之前被擋下，額度形同虛設，端點成了免費的探測窗口。
+> 2026-09-04 補上回歸測試（`api/__tests__/parse-post.test.js`「關卡順序」）鎖住這個不變量：
+> 在此之前把檢查上移**不會讓任何測試變紅**。
 
 **環境變數讀取鏈（硬性寫法）**
 
@@ -627,13 +658,22 @@ interface ParsedPlace {
 | 五個順位全失敗 | 200 | `need_text_or_image` | S-13「這個連結讀不到內文…」／S-21「讀不到，IG 一定是這樣…請截一張把說明文字展開的圖」 |
 | LLM 回空陣列 | 200 | `no_places` | S-13「找不到具體的店名或景點…」／S-21「這張圖上找不到店名，多半是截到食物畫面」 |
 | 圖片超過上限（張數 / 單張 / 總量） | 200 | `too_large` | 「截圖太大了…」（兩模式同文案）|
-| IP 限流 / trip key 不存在 / LLM 例外 | 200 | `rate_limited` | 「剛剛解析太多次了…你貼的內容還留著」（兩模式同文案）|
+| IP 限流 / trip key 不存在 | 200 | `rate_limited` | 「剛剛解析太多次了…你貼的內容還留著」（兩模式同文案）。**兩者的 `reason` 與 `message` 逐字相同**，見 §5.5 |
+| 缺供應商金鑰（`ANTHROPIC_API_KEY` / `GEMINI_API_KEY` 未設定） | 200 | `not_configured` | 「解析服務尚未設定金鑰，請聯絡管理者。」走「未知 reason 原樣顯示」的既有分支 |
+| **供應商呼叫失敗**（網路、429、SDK 例外） | 200 | `upstream_error` | 「解析服務暫時不通，等一下再試。你貼的內容還留著。」走「未知 reason 原樣顯示」的既有分支 |
 
 > **沒有任何情況回 4xx/5xx。** 這讓 `src/lib/api.js` 只需 `res.json()`，與 `lookupFlight` / `lookupRate` 保持同一種呼叫風格。
+>
+> **`upstream_error` 為什麼要從 `rate_limited` 拆出來（2026-09-04 新增）**：拆之前，`rate_limited`
+> 一碼三用 —— 真的限流、trip key 不存在、供應商掛掉 —— 而且配**兩句不同的文案**（前兩者「剛剛解析太多次了」、
+> 後者「解析服務暫時不通」）。這正是 Q-13 想根除的型態：一個 reason 承載多種語意，前端與 log 都分不出來。
+> **只能拆供應商錯誤這一種**：它發生在 trip 檢查**之後**（見 §5.5 的關卡順序），不論 trip key 存不存在都到不了這裡，
+> 因此不洩漏存在性；而「限流」與「trip 不存在」兩者**必須繼續逐字不可區分**（PRD §7.4 硬性），不得比照辦理。
+> `upstream_error` **尚未列入 PRD §7.1 的 `reason` 列舉**，已記 [questions.md](../questions.md) **Q-15** 請技術總監補。
 
 ### 6.2 降級階梯（`resolveSource`）
 
-> **2026-09-03 依 PRD v3.9 §7.2 回寫。** 本節 v3.1.0 的排序（`images[]` 排第 4、在 og:meta 之下）
+> **2026-09-03 依 PRD v3.10 §7.2 回寫。** 本節 v3.1.0 的排序（`images[]` 排第 4、在 og:meta 之下）
 > 與 PRD 的「**有圖必先讀圖**」直接矛盾，且矛盾的方向會造成真實故障：使用者上傳了截圖，
 > 卻因為 og 僥倖回了一段無關文字而**完全不看圖**。實作（`api/_parse-lib.js`）走的是 PRD 的順序。
 
@@ -710,15 +750,23 @@ const SAVE_PLACES_TOOL = {
   },
 };
 
+const MAX_OUTPUT_TOKENS = 4096;   // PRD v3.10 §7.5c 裁定（Q-12）;上界是 12 筆地點,不是圖片張數
+
 const msg = await client.messages.create({
-  model: MODEL,                                  // claude-haiku-4-5
-  max_tokens: 2048,
+  model: modelFor("anthropic"),                  // PARSE_MODEL_ANTHROPIC || PARSE_MODEL || claude-haiku-4-5
+  max_tokens: MAX_OUTPUT_TOKENS,
   temperature: 0,
   system: SYSTEM_PROMPT,
   tools: [SAVE_PLACES_TOOL],
   tool_choice: { type: "tool", name: "save_places" },   // 強制,保證回結構化 JSON
   messages: [{ role: "user", content: userContent }],   // 見下
 });
+// 上限再高也要知道自己撞到了(PRD v3.10 §7.5c)。被截斷時 tool_use.input 仍是個
+// 看起來完整的物件,clampPlaces 照收,沒有這行 log 就完全沒有線索。
+if (msg.stop_reason === "max_tokens") {
+  console.warn("[parse-post] anthropic hit max_tokens; the place list may be truncated",
+    { model: modelFor("anthropic"), max_tokens: MAX_OUTPUT_TOKENS });
+}
 const block = msg.content.find((b) => b.type === "tool_use");
 const raw = block ? block.input : { title: "", summary: "", places: [] };
 ```
@@ -770,15 +818,15 @@ function buildImageContent(images, cityHintLine, extraText = "") {
 | `media_type` 取 `img.mime || "image/jpeg"` | 前端 `compressImage` 一律輸出 JPEG；`||` 只是防呆 |
 | 仍走**強制 tool-use** | 與文字路徑完全相同，`claude-haiku-4-5` 支援 `tool_choice: {type:"tool"}`，不需要為多圖改變輸出約束 |
 
-> **`max_tokens` 由 2048 提高到 4096（2026-09-03）**：PRD §7.5c 寫「維持 2048 即可」，理由是多張圖增加的是
+> **`max_tokens` 由 2048 提高到 4096（2026-09-03 提出，PRD v3.10 §7.5c 已裁定採納）**：PRD v3.9 以前寫「維持 2048 即可」，理由是多張圖增加的是
 > **input** tokens——這個理由本身正確，但它量的是錯的那一軸。輸出的上界不是圖片張數，而是
 > **12 筆地點 × (`name` / `nameJa` / `area` / `note`)**；以繁中／日文計約 3–4k output tokens，`2048` 落在
 > 這個最壞情況之下。被截斷時 `tool_use.input` 仍是個**看起來完整的物件**，`clampPlaces` 照收，
 > 使用者只會發現「店比貼文裡少」而沒有任何線索。因此：`max_tokens: 4096`，並在
 > `stop_reason === "max_tokens"` 時 `console.warn`。輸出 token 只在真的用到時才計費，餘裕不花錢。
-> **此處與 PRD §7.5c 不一致，已列 [questions.md](../questions.md) Q-12 請技術總監裁定。**
+> **PRD v3.10 §7.5c 已裁定採納此修正（Q-12 結案）**，本文件與 PRD 現已一致。
 
-> **多圖的 input token 估算（PRD v3.9 §7.5d）**：1568 視覺 tokens／張（不是 v3.1.0 寫的 2.7k），3 張約 4.7k。
+> **多圖的 input token 估算（PRD v3.10 §7.5d）**：1568 視覺 tokens／張（不是 v3.1.0 寫的 2.7k），3 張約 4.7k。
 
 **System prompt 重點**（PRD §7.3）
 - 只抽**真實存在、可在地圖上找到**的店家或景點。
@@ -838,10 +886,12 @@ export const clampCollection = (raw) => ({
 |------|------|---------|
 | trip key 存在性檢查 | `GET {SB_URL}/rest/v1/trips?id=eq.<key>&select=id`，headers `apikey` + `Authorization: Bearer <SB_KEY>`。空陣列 → 拒絕呼叫 LLM，**回與限流逐字相同的 `reason` 與 `message`**（見 §5.5 末的說明），真正的原因只進 `console.warn`。**`SB_URL` 或 `SB_KEY` 任一缺失 → 跳過此檢查、只留 IP 限流並記 log**（§6.1）| T-79 |
 | **供應商金鑰檢查** | 執行期讀 `process.env`（SDK 自己讀 env，grep 程式碼看不出來）：`anthropic` → `ANTHROPIC_API_KEY`、`gemini` → `GEMINI_API_KEY`。缺 → **`reason: "not_configured"`** + `console.error` 點名變數。排在呼叫供應商之前、降級階梯之前 | 新增（`parse-post.test.js`）|
+| **金鑰檢查的位置（硬性順序）** | 必須排在**限流與 trip 檢查之後**。上移的話，缺金鑰的部署上限流永遠不會生效，端點成為不必消耗額度、也不需有效 trip key 的免費探測窗口 | 新增（`parse-post.test.js`「關卡順序」三例，2026-09-04）|
+| **供應商呼叫失敗** | `catch` → **`reason: "upstream_error"`**（不再併進 `rate_limited`）。此分支在 trip 檢查之後，不洩漏 trip key 存在性 | 新增（`parse-post.test.js`「供應商呼叫失敗」兩例，2026-09-04）|
 | 每 IP 滑動視窗限流 | 記憶體 `Map<ip, number[]>`，20 次/小時。冷啟動重置（防護力弱但免費且有摩擦力，PRD 已認可） | — |
 | 地點數上限 | schema `maxItems: 12` + `clampPlaces` 的 `slice(0,12)` | T-78 |
 | **圖片張數上限** | `images.length > 3` → `too_large` | — |
-| **單張圖片上限** | 任一 `images[i].base64.length > 4_000_000` → `too_large`（PRD v3.9 §7.5d；API 實際允許 10MB/張）| — |
+| **單張圖片上限** | 任一 `images[i].base64.length > 4_000_000` → `too_large`（PRD v3.10 §7.5d；API 實際允許 10MB/張）| — |
 | **圖片總量上限** | `sum(base64.length) > 10_000_000` → `too_large`（API 實際允許 32MB/請求）| — |
 | 外部 fetch 逾時 | 全部 6 秒 `AbortSignal.timeout` | — |
 

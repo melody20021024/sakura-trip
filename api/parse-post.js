@@ -34,7 +34,7 @@ const modelFor = (provider) =>
 
 // The env var each provider needs. Checked before we call out, because a
 // missing key otherwise throws inside the SDK, lands in the generic catch and
-// comes back as `rate_limited`「解析服務暫時不通」 — indistinguishable from a
+// comes back as `upstream_error`「解析服務暫時不通」 — indistinguishable from a
 // network blip or a real 429, and therefore the hardest failure to diagnose.
 // (As of 2026-09-03 `ANTHROPIC_API_KEY` is in fact NOT set on Vercel: the
 // project only has AERODATABOX_KEY and the VITE_SUPABASE_* pair. The design
@@ -232,7 +232,14 @@ export default async function handler(req, res) {
     raw = provider === "gemini" ? await callGemini(content) : await callAnthropic(content);
   } catch (e) {
     console.error("[parse-post] provider", provider, e?.message || e);
-    return fail(res, "rate_limited", "解析服務暫時不通,等一下再試。你貼的內容還留著。");
+    // Its own reason, not `rate_limited`. This branch runs *after* the trip
+    // check, so it cannot leak whether a trip key exists — the two cases that
+    // must stay indistinguishable are handled by `throttled()` above, and both
+    // return before we ever reach a provider. Reusing `rate_limited` here made
+    // one code carry three meanings with two different sentences: a real 429,
+    // an unknown trip key, and "the upstream is down" — the exact shape of
+    // failure Q-13 was opened to remove.
+    return fail(res, "upstream_error", "解析服務暫時不通,等一下再試。你貼的內容還留著。");
   }
 
   const places = clampPlaces(raw && raw.places);
