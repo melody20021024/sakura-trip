@@ -19,7 +19,18 @@ import {
 // has to observe the *runtime* env — the Anthropic SDK reads the key itself, so
 // there is no way to tell from the code whether it is set.
 const providerOf = () => process.env.PARSE_PROVIDER || "anthropic";
-const MODEL = process.env.PARSE_MODEL || "claude-haiku-4-5";
+// One override per provider. `PARSE_MODEL` was shared by both, so switching
+// PARSE_PROVIDER to gemini while an old PARSE_MODEL was still set would post
+// `claude-haiku-4-5` to Google and fail with an opaque 404. Kept as a fallback
+// so a deployment that only sets PARSE_MODEL keeps working.
+const MODEL_DEFAULTS = { anthropic: "claude-haiku-4-5", gemini: "gemini-2.0-flash" };
+const modelFor = (provider) =>
+  (provider === "gemini"
+    ? process.env.PARSE_MODEL_GEMINI
+    : process.env.PARSE_MODEL_ANTHROPIC)
+  || process.env.PARSE_MODEL
+  || MODEL_DEFAULTS[provider]
+  || MODEL_DEFAULTS.anthropic;
 
 // The env var each provider needs. Checked before we call out, because a
 // missing key otherwise throws inside the SDK, lands in the generic catch and
@@ -84,7 +95,7 @@ async function tripExists(trip) {
 async function callAnthropic(content) {
   const client = new Anthropic();
   const msg = await client.messages.create({
-    model: MODEL,
+    model: modelFor("anthropic"),
     max_tokens: 2048,
     temperature: 0,
     system: SYSTEM_PROMPT,
@@ -103,7 +114,7 @@ async function callAnthropic(content) {
 async function callGemini(content) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY missing");
-  const model = process.env.PARSE_MODEL || "gemini-2.0-flash";
+  const model = modelFor("gemini");
   const parts = content.map((b) =>
     b.type === "image"
       ? { inline_data: { mime_type: b.source.media_type, data: b.source.data } }
