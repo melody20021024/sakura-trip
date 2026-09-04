@@ -90,9 +90,49 @@ describe("fail-soft transport (PRD §7.1) — 永遠 200", () => {
   });
 });
 
+describe("缺供應商金鑰 → not_configured（不是 rate_limited）", () => {
+  it("anthropic 缺 ANTHROPIC_API_KEY", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    const handler = await loadHandler();
+    const res = await call(handler, OK_TRIP);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.reason).toBe("not_configured");
+    expect(res.body.message).toMatch(/金鑰/);
+    // 排錯時要看得出缺的是哪一個變數 —— SDK 自己讀 env,grep 程式碼看不出來。
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("ANTHROPIC_API_KEY")
+    );
+  });
+
+  it("gemini 缺 GEMINI_API_KEY,且點名的是 GEMINI 而非 ANTHROPIC", async () => {
+    vi.stubEnv("PARSE_PROVIDER", "gemini");
+    vi.stubEnv("GEMINI_API_KEY", "");
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-present");
+    const handler = await loadHandler();
+    const res = await call(handler, OK_TRIP);
+    expect(res.body.reason).toBe("not_configured");
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("GEMINI_API_KEY"));
+  });
+
+  it("金鑰存在時就不再是 not_configured", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-present");
+    const handler = await loadHandler();
+    // 沒有 text / url / images → 階梯全滅,證明流程已走過金鑰檢查。
+    const res = await call(handler, { trip: "abc123" });
+    expect(res.body.reason).toBe("need_text_or_image");
+  });
+
+  it("空白字串的金鑰視同未設定", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "   ");
+    const handler = await loadHandler();
+    expect((await call(handler, OK_TRIP)).body.reason).toBe("not_configured");
+  });
+});
+
 describe("trip 不存在與限流對外完全不可區分（中-2）", () => {
   // 兩者只要有一點不同,這支端點就成了「這個 trip key 存不存在」的探測器。
   async function rateLimitedBody() {
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-present");
     const handler = await loadHandler();
     let res;
     // BARE_TRIP:限流在階梯之前,額度照樣被吃掉,但不會走到供應商。
@@ -101,6 +141,7 @@ describe("trip 不存在與限流對外完全不可區分（中-2）", () => {
   }
 
   async function unknownTripBody() {
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-present");
     vi.stubEnv("SUPABASE_URL", "https://sb.test");
     vi.stubEnv("SUPABASE_ANON_KEY", "anon");
     // Supabase 回空陣列 = 這個 trip key 不存在。

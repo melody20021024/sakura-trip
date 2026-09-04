@@ -14,8 +14,29 @@ import {
   SYSTEM_PROMPT, SAVE_PLACES_TOOL, rateLimited, FETCH_TIMEOUT_MS,
 } from "./_parse-lib.js";
 
-const PROVIDER = process.env.PARSE_PROVIDER || "anthropic";
+// Read at request time, not module load: a serverless instance is reused across
+// requests but the tests need to drive this, and `missingProviderKey()` below
+// has to observe the *runtime* env — the Anthropic SDK reads the key itself, so
+// there is no way to tell from the code whether it is set.
+const providerOf = () => process.env.PARSE_PROVIDER || "anthropic";
 const MODEL = process.env.PARSE_MODEL || "claude-haiku-4-5";
+
+// The env var each provider needs. Checked before we call out, because a
+// missing key otherwise throws inside the SDK, lands in the generic catch and
+// comes back as `rate_limited`「解析服務暫時不通」 — indistinguishable from a
+// network blip or a real 429, and therefore the hardest failure to diagnose.
+// (As of 2026-09-03 `ANTHROPIC_API_KEY` is in fact NOT set on Vercel: the
+// project only has AERODATABOX_KEY and the VITE_SUPABASE_* pair. The design
+// doc's claim that the v2 flight feature already set it confused it with
+// AERODATABOX_KEY, which is what api/flight.js actually reads.)
+const PROVIDER_KEY_ENV = {
+  anthropic: "ANTHROPIC_API_KEY",
+  gemini: "GEMINI_API_KEY",
+};
+const missingProviderKey = (provider) => {
+  const name = PROVIDER_KEY_ENV[provider] || PROVIDER_KEY_ENV.anthropic;
+  return String(process.env[name] || "").trim() ? "" : name;
+};
 
 // No-prefix names first so a future rename to the standard ones takes over with
 // no code change. The VITE_ pair already exists in the Vercel project settings,
@@ -151,6 +172,17 @@ export default async function handler(req, res) {
   // as a different `reason` would. The real cause goes to the log instead.
   if (!(await tripExists(trip))) return throttled(res, `unknown trip key ${trip}`);
 
+  const provider = providerOf();
+  const missingKey = missingProviderKey(provider);
+  if (missingKey) {
+    // Before the provider call, and loud: this is a deployment fault, not a
+    // user fault, and it must not hide inside the generic 「暫時不通」 bucket.
+    console.error(
+      `[parse-post] ${missingKey} is not set; provider "${provider}" cannot be called`
+    );
+    return fail(res, "not_configured", "解析服務尚未設定金鑰,請聯絡管理者。");
+  }
+
   let ladder;
   try {
     ladder = await resolveSource({ text, url, images });
@@ -172,9 +204,9 @@ export default async function handler(req, res) {
 
   let raw;
   try {
-    raw = PROVIDER === "gemini" ? await callGemini(content) : await callAnthropic(content);
+    raw = provider === "gemini" ? await callGemini(content) : await callAnthropic(content);
   } catch (e) {
-    console.error("[parse-post] provider", PROVIDER, e?.message || e);
+    console.error("[parse-post] provider", provider, e?.message || e);
     return fail(res, "rate_limited", "解析服務暫時不通,等一下再試。你貼的內容還留著。");
   }
 
