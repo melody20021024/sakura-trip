@@ -1,7 +1,7 @@
 # 前後端交叉比對報告 — 櫻旅 v3「口袋地點」
 
-> 建立時間：2026-09-02 ｜ **修訂：2026-09-04（依 PRD v3.10 回寫）** ｜ 狀態：待簽核
-> 比對對象：[frontend/pocket-v3.md](frontend/pocket-v3.md) **v3.2.1** ↔ [backend/parse-and-schema-v3.md](backend/parse-and-schema-v3.md) **v3.2.1** ↔ [**PRD v3.10**](../01-PRD/PRD-v3-pocket-places.md) ↔ [**UI spec v3.1**](../02-Design/ui-spec-v3-pocket.md)
+> 建立時間：2026-09-02 ｜ **修訂：2026-09-04（依 PRD v3.11 回寫）** ｜ 狀態：待簽核
+> 比對對象：[frontend/pocket-v3.md](frontend/pocket-v3.md) **v3.2.2** ↔ [backend/parse-and-schema-v3.md](backend/parse-and-schema-v3.md) **v3.2.2** ↔ [**PRD v3.11**](../01-PRD/PRD-v3-pocket-places.md) ↔ [**UI spec v3.1**](../02-Design/ui-spec-v3-pocket.md)
 > 範圍：**僅 MVP（PRD §8 的 P1–P10）**。Phase 1.5 地圖（F-79／F-80／F-84～F-87）與 Phase 2 `share_target`（F-82）不列入比對。
 
 ## 0. 本次同步的上游變更（v3.0 → v3.1 比對差異）
@@ -44,7 +44,7 @@
 |---|---|---|---|
 | 15 | `max_tokens` **4096** + `stop_reason` 檢查（Q-12 結案）| PRD v3.10 §7.5c | 純後端，不影響前後端對齊；後端文件 §6.3 已回寫 |
 | 16 | `bad_request` / `not_configured` 正式進 §7.1 `reason` 列舉（Q-13 結案）| PRD v3.10 §7.1 | §3 既有兩列的出處由「PR 審查意見」改為 PRD |
-| 17 | **新增 `upstream_error`**（供應商呼叫失敗，自 `rate_limited` 拆出）| 2026-09-04 實作（**PRD §7.1 尚未列，見 questions.md Q-15**）| §3 新增一列 |
+| 17 | **新增 `upstream_error`**（供應商呼叫失敗，自 `rate_limited` 拆出，Q-15 結案）| **PRD v3.11 §7.1／§7.4** | §3 新增一列 |
 | 18 | **金鑰檢查排在限流與 trip 檢查之後**是硬性順序，已有回歸測試 | PRD v3.10 §7.4 | §5 測試對照表新增一列 |
 
 ---
@@ -100,7 +100,7 @@
 | **總量 > 10MB** | 200 `reason:"too_large"` | 「這幾張截圖加起來太大了…」 | S-13 / S-21 | ✅ **v3.1 新增，v3.2 改值** |
 | **缺供應商金鑰（`ANTHROPIC_API_KEY` / `GEMINI_API_KEY` 未設定）** | 200 `reason:"not_configured"`「解析服務尚未設定金鑰,請聯絡管理者。」 | 走「未知 reason **原樣顯示**」的既有分支，**不需新增程式碼** | S-13 / S-21 | ✅ **v3.2 新增**。刻意不併進 `rate_limited`：那會讓永久性的部署故障看起來像暫時性的負載 |
 | IP 限流 / trip key 不存在 | 200 `reason:"rate_limited"` | 「剛剛解析太多次了…你貼的內容還留著」 | S-13 / S-21 | ✅ **兩者的 `reason` 與 `message` 必須逐字相同**（v3.2 修正）：PRD §7.4 規定前端一律優先顯示後端 `message`，只要文案不同，端點就仍是 trip key 存在性探測器。回歸測試在 `api/__tests__/parse-post.test.js` |
-| **供應商呼叫失敗（網路 / 429 / SDK 例外）** | 200 `reason:"upstream_error"`「解析服務暫時不通,等一下再試。你貼的內容還留著。」 | 走「未知 reason **原樣顯示**」的既有分支，**不需新增程式碼** | S-13 / S-21 | ✅ **v3.2.1 新增**：拆之前 `rate_limited` 一碼三用又配兩句文案。**只拆這一種** —— 它在 trip 檢查之後，不洩漏存在性；上面那一列的兩種必須繼續逐字不可區分，不得比照辦理。**PRD §7.1 尚未列，見 questions.md Q-15** |
+| **供應商呼叫失敗（網路 / 429 / SDK 例外）** | 200 `reason:"upstream_error"`「解析服務暫時不通,等一下再試。你貼的內容還留著。」 | 走「未知 reason **原樣顯示**」的既有分支，**不需新增程式碼** | S-13 / S-21 | ✅ **v3.2.1 新增**：拆之前 `rate_limited` 一碼三用又配兩句文案。**只拆這一種** —— 它在 trip 檢查之後，不洩漏存在性；上面那一列的兩種必須繼續逐字不可區分，不得比照辦理。出處為 **PRD v3.11 §7.1／§7.4**（Q-15 結案） |
 | **網路請求本身失敗（fetch reject）** | — | `try/catch` → 視同 `need_text_or_image` | S-13 / S-21 | ✅ 前端補位，不會白畫面 |
 | **只帶 IG 連結（不送出）** | — | 主按鈕改「選擇截圖」＝開檔案選擇器，**不打 API**（DDR-27）| S-20 | ✅ **v3.1 新增**：省下一次註定失敗的請求與一格限流額度 |
 | 離線（未送出） | — | 不呼叫端點，直接存待解析 pocket；**截圖不保存**並顯示警語 | S-14 / S-06 / **S-06b** | ✅ |

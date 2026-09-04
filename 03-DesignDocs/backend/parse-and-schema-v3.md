@@ -4,7 +4,7 @@
 
 :::info
 功能名稱：v3「口袋地點」後端／資料層（遷移前向相容修正、schema v5、`/api/parse-post`）
-版本：**3.2.1**（**2026-09-04 依 PRD v3.10 回寫**；前版 3.2.0 依 PRD v3.9、3.1.0 依 PRD v3.7 / UI spec v3.1）
+版本：**3.2.2**（**2026-09-04 依 PRD v3.11 回寫**；前版 3.2.1 依 PRD v3.10、3.2.0 依 PRD v3.9、3.1.0 依 PRD v3.7 / UI spec v3.1）
 最後更新：2026-09-04
 作者：程式開發員
 :::
@@ -22,7 +22,7 @@
 
 > **v3.2.0 同步摘要（2026-09-03 依 PRD v3.9 回寫）**
 >
-> 以下五處是 PRD v3.7～v3.9 更新後留在本文件的殘留，已回寫。（當時以 PRD v3.9 為準；**現行唯一準則是 v3.10**，見下方 v3.2.1 摘要。）
+> 以下五處是 PRD v3.7～v3.9 更新後留在本文件的殘留，已回寫。（當時以 PRD v3.9 為準；**現行唯一準則是 v3.11**，見下方 v3.2.2 摘要。）
 >
 > | # | 原本寫的 | 現在（PRD v3.9） | 影響章節 |
 > |---|---|---|---|
@@ -57,7 +57,7 @@
 
 ## 1. 相關連結
 
-- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.10**，F-69～F-78、F-81、F-83；§2 Phase 0、§5 資料模型、§7 端點規格與 **§7.5b 多張截圖**、**§7.5d OCR 參數實測結果**、§10 測試規則含 **T-99**）
+- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.11**，F-69～F-78、F-81、F-83；§2 Phase 0、§5 資料模型、§7 端點規格與 **§7.5b 多張截圖**、**§7.5d OCR 參數實測結果**、§10 測試規則含 **T-99**）
 - UI 規範：[../../02-Design/ui-spec-v3-pocket.md](../../02-Design/ui-spec-v3-pocket.md)（**v3.1**，依平台分流、C-30 ShotPicker）
 - UI 原型：[../../02-Design/prototype-v3-pocket.html](../../02-Design/prototype-v3-pocket.html)
 - 前端設計文件：[../frontend/pocket-v3.md](../frontend/pocket-v3.md)
@@ -669,7 +669,10 @@ interface ParsedPlace {
 > 後者「解析服務暫時不通」）。這正是 Q-13 想根除的型態：一個 reason 承載多種語意，前端與 log 都分不出來。
 > **只能拆供應商錯誤這一種**：它發生在 trip 檢查**之後**（見 §5.5 的關卡順序），不論 trip key 存不存在都到不了這裡，
 > 因此不洩漏存在性；而「限流」與「trip 不存在」兩者**必須繼續逐字不可區分**（PRD §7.4 硬性），不得比照辦理。
-> `upstream_error` **尚未列入 PRD §7.1 的 `reason` 列舉**，已記 [questions.md](../questions.md) **Q-15** 請技術總監補。
+> **PRD v3.11 §7.1／§7.4 已裁定 Q-15**（採納「補進列舉」）：`upstream_error` 正式進入 `reason` 列舉，
+> §7.4 並把上面這段理由寫進 PRD 本文 —— 供應商錯誤發生在 trip key 檢查**之後**，抽出它不洩漏存在性；
+> `rate_limited` 保留給「限流」與「trip 不存在」共用，且兩者的 `message` 必須逐字相同。
+> 本文件與 PRD 現已一致，Q-15 結案。
 
 ### 6.2 降級階梯（`resolveSource`）
 

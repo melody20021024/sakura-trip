@@ -4,7 +4,7 @@
 
 :::info
 功能名稱：v3 口袋地點（截圖／貼上收藏 → AI 解析覆核 → 建議日期 → 寫入行程 → 導航）
-版本：**3.2.1**（**2026-09-04 依 PRD v3.10 回寫**；前版 3.2.0 依 PRD v3.9、3.1.0 依 PRD v3.7 / UI spec v3.1）
+版本：**3.2.2**（**2026-09-04 依 PRD v3.11 回寫**；前版 3.2.1 依 PRD v3.10、3.2.0 依 PRD v3.9、3.1.0 依 PRD v3.7 / UI spec v3.1）
 最後更新：2026-09-04
 作者：程式開發員
 :::
@@ -53,7 +53,7 @@
 
 ## 1. 相關連結
 
-- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.10**）
+- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.11**）
 - UI 規範：[../../02-Design/ui-spec-v3-pocket.md](../../02-Design/ui-spec-v3-pocket.md)（**v3.1**：P-06、C-18～**C-30**、S-01～**S-21**、DDR-09～**DDR-32**）
 - UI 原型：[../../02-Design/prototype-v3-pocket.html](../../02-Design/prototype-v3-pocket.html)
 - 後端 / 資料契約：[../backend/parse-and-schema-v3.md](../backend/parse-and-schema-v3.md)
