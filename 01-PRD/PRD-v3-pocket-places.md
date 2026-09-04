@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |------|------|
-| 文件版本 | v3.10（增修，不取代 `PRD.md` v2.0）。**v3.10：裁定 Q-12（`max_tokens` 2048→4096，原理由答錯問題）與 Q-13（補 `bad_request` / `not_configured`，並明訂限流與 trip 不存在必須逐字不可區分）**。**v3.9：T-99 實測完成 —— `OCR_MAX` 1024→1568、`OCR_QUALITY` 0.7→0.85、單張上限 1.4MB→4MB**，依據為 Haiku 4.5 屬 Standard tier（原生上限 1568px／1568 視覺 token）。**v3.8：降級階梯改為「有圖必先讀圖」**、補多圖 LLM 組裝規則與兩個靜默失敗陷阱、修好 §4.2 被切斷的表格與 §9 風險 #2 的改版殘留。**v3.7：截圖契約擴充為 `images[]`（上限 3 張）**，並裁定離線 IG 不在 MVP 解決、`detectPlatform` 落位 `lib/share.js`、新增 T-99 OCR 參數驗收。**v3.6：T-98 實機驗證推翻「貼文文字為 IG 主路徑」的假設，截圖升回 IG 主路徑，UI 改為依平台分流**。**v3.5 依設計文件階段回報修正 §2.3 遺漏的 `mergeTrip` 破口（Q-01，阻斷級）**，並補 Q-02~Q-06。v3.4 依 UI 設計階段回報修正 F-76 文案矛盾、補 F-72 同名規則與 F-78 commit 歸屬、修正 T-83 措辭、裁定 `nameJa` 唯讀。v3.2 改為 App 內原生地圖；v3.3 因 CEO 拍板：建議日期進 MVP、iOS 捷徑與貼上同一輪、地圖降為加分（見 §1.6）；v3.3.1 修正三處內部矛盾並補 T-98 |
+| 文件版本 | v3.11（增修，不取代 `PRD.md` v2.0）。**v3.11：裁定 Q-15，補 `upstream_error` reason** —— 實作與三份設計文件都已在用，PRD 是四者中唯一缺的。**v3.10：裁定 Q-12（`max_tokens` 2048→4096，原理由答錯問題）與 Q-13（補 `bad_request` / `not_configured`，並明訂限流與 trip 不存在必須逐字不可區分）**。**v3.9：T-99 實測完成 —— `OCR_MAX` 1024→1568、`OCR_QUALITY` 0.7→0.85、單張上限 1.4MB→4MB**，依據為 Haiku 4.5 屬 Standard tier（原生上限 1568px／1568 視覺 token）。**v3.8：降級階梯改為「有圖必先讀圖」**、補多圖 LLM 組裝規則與兩個靜默失敗陷阱、修好 §4.2 被切斷的表格與 §9 風險 #2 的改版殘留。**v3.7：截圖契約擴充為 `images[]`（上限 3 張）**，並裁定離線 IG 不在 MVP 解決、`detectPlatform` 落位 `lib/share.js`、新增 T-99 OCR 參數驗收。**v3.6：T-98 實機驗證推翻「貼文文字為 IG 主路徑」的假設，截圖升回 IG 主路徑，UI 改為依平台分流**。**v3.5 依設計文件階段回報修正 §2.3 遺漏的 `mergeTrip` 破口（Q-01，阻斷級）**，並補 Q-02~Q-06。v3.4 依 UI 設計階段回報修正 F-76 文案矛盾、補 F-72 同名規則與 F-78 commit 歸屬、修正 T-83 措辭、裁定 `nameJa` 唯讀。v3.2 改為 App 內原生地圖；v3.3 因 CEO 拍板：建議日期進 MVP、iOS 捷徑與貼上同一輪、地圖降為加分（見 §1.6）；v3.3.1 修正三處內部矛盾並補 T-98 |
 | 撰寫角色 | 技術總監 |
 | 撰寫日期 | 2026-09-01 |
 | 前一版 | v2（已上線，SA 第二輪通過，Vercel 部署中）|
@@ -654,7 +654,7 @@ POST /api/parse-post
 
 200 { ok: false,
       reason: "bad_request" | "need_text_or_image" | "no_places" | "too_large"
-            | "rate_limited" | "not_configured",
+            | "rate_limited" | "not_configured" | "upstream_error",
       message: "<給使用者看的繁中訊息>" }
 ```
 
@@ -712,6 +712,7 @@ const SB_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_K
 無前綴的名稱排在前面，日後若有人改用標準命名可無縫接手。**兩者任一缺失即跳過 trip key 檢查、只保留 IP 限流並在 log 留警告**，不得因缺變數而讓端點整個失效 |
 | 每 IP 滑動視窗限流 | 記憶體 `Map`，如 20 次/小時。冷啟動會重置，防護力弱但免費且有摩擦力 |
 | **存在性不可區分**（2026-09-03 補）| **「限流」與「trip key 不存在」對外必須完全無法分辨。** 共用 `reason: "rate_limited"` **還不夠** —— PRD 規定前端一律優先顯示後端的 `message`，所以連 `message` 也必須**逐字相同**；真正的原因只寫進 `console.warn`。否則端點就成了 trip key 的存在性探測器，而 trip key 是本專案**唯一的存取邊界** |
+| **供應商錯誤獨立成碼**（2026-09-03 補，Q-15）| 供應商呼叫失敗回 **`upstream_error`**，不得併進 `rate_limited`。理由與 Q-13 同型：一個 reason 承載多種語意，使用者就無從分辨「等一下會好」與「這條路根本不通」。**這一種可以安全抽出**，因為它發生在 trip key 檢查**之後** —— 抽出它不會洩漏 trip key 是否存在。**`rate_limited` 保留給「限流」與「trip 不存在」兩者共用，且兩者的 `message` 必須逐字相同**（見上一列）|
 | **供應商金鑰檢查**（2026-09-03 補，Q-13）| 呼叫供應商前先確認對應金鑰存在（`anthropic` → `ANTHROPIC_API_KEY`；`gemini` → `GEMINI_API_KEY`），缺少時回**獨立的 `not_configured`**，不得混進 `rate_limited` —— 對一個永久缺失的金鑰說「等一下再試」，使用者會永遠等下去。檢查須排在限流與 trip 檢查**之後**，否則缺金鑰會變成繞過限流的免費探測窗口 |
 | 地點數上限 | schema `maxItems: 12` + 回傳後 `slice(0, 12)` |
 | 圖片大小上限 | **每張** base64 ≤ 4MB、**總量 ≤ 10MB**、**張數 ≤ 3**。**三道上限前後端都要做** —— 前端擋是為了不送註定失敗的請求、也不浪費每 IP 的額度；後端擋是防護（前端可繞過），且**必須排在 LLM 呼叫與 Supabase 查詢之前**，4MB 的 body 不該先去打 Supabase |
