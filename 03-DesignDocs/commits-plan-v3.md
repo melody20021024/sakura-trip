@@ -1,7 +1,7 @@
 # Commit Plan: 櫻旅 v3「口袋地點」MVP
 
-> 建立時間：2026-09-02 ｜ **修訂：2026-09-02（依 PRD v3.7 / UI spec v3.1 回頭同步）** ｜ 狀態：**待確認**
-> 對應：[**PRD v3.7**](../01-PRD/PRD-v3-pocket-places.md) §8 的 P1–P10 ｜ [**UI spec v3.1**](../02-Design/ui-spec-v3-pocket.md)
+> 建立時間：2026-09-02 ｜ **修訂：2026-09-03（依 PRD v3.9 回寫）** ｜ 狀態：**待確認**
+> 對應：[**PRD v3.9**](../01-PRD/PRD-v3-pocket-places.md) §8 的 P1–P10 ｜ [**UI spec v3.1**](../02-Design/ui-spec-v3-pocket.md)
 > 設計文件：[frontend/pocket-v3.md](frontend/pocket-v3.md) v3.1.0｜[backend/parse-and-schema-v3.md](backend/parse-and-schema-v3.md) v3.1.0｜[cross-check-v3.md](cross-check-v3.md)
 > 範圍：**僅 MVP**。Phase 1.5 地圖（M1–M8）與 Phase 2 `share_target` 不在本計畫。
 
@@ -16,6 +16,19 @@
 | 5 | **F4** 明確標示會碰到 `ConfirmSheet` 的既有 4 個呼叫點（向下相容、不需改）| Q-06 裁定，避免實作時誤以為要改呼叫端 |
 | 6 | **B1** 契約改 `images[]`、三道上限、多圖 content block 組裝 | PRD v3.7 §7.5b |
 | 7 | **Phase 0 完全不動** | 三個 commit、單獨分支、單獨上線、升版號閘門，一律維持 |
+
+## 0b. 2026-09-03 回寫（v3.1 → v3.2，依 PRD v3.9）
+
+> **前端 F3 / F5 照這份對齊，數值錯了會直接做錯**，故單獨列出。T-99 已於 2026-09-02 完成（PRD §7.5d），
+> 本計畫 v3.1 仍寫著實測前的暫定值。
+
+| # | 改動 | 出處 |
+|---|---|---|
+| 1 | 三道圖片上限：每張 **1.4MB → 4MB**、總量 **4MB → 10MB**（張數 ≤ 3 不變）| PRD v3.9 §7.4／§7.5b／§7.5d |
+| 2 | OCR 常數：**`OCR_MAX` 1024 → 1568**、**`OCR_QUALITY` 0.7 → 0.85** | PRD v3.9 §7.5d（T-99 實測定案）|
+| 3 | **B1 的降級階梯敘述改為「有圖必先讀圖」** —— v3.1 寫的 `text → oEmbed → og → images[] → 失敗` 與 PRD §7.2 順位 1 矛盾 | PRD v3.9 §7.2 |
+| 4 | B1 追加：`reason: "not_configured"`（缺供應商金鑰）、`max_tokens` 4096 + `stop_reason` 檢查、`PARSE_MODEL` 拆成兩個供應商各自的變數、trip 不存在與限流**回應逐字相同** | 2026-09-03 PR #16／#17 審查意見 |
+| 5 | T-99 由「實作後必做」改為「**已完成**，端點接起來後用實際回傳結果複驗」| PRD v3.9 §10 |
 
 ## 分支規劃
 
@@ -75,7 +88,8 @@ P1 → P2 → P3  合併 main → 部署 Vercel
 
 - **`ParsePostRequest` / `ParsePostOk` DTO**：frontend F3 的 `api.parsePost()` 必須與 backend B1 的 §6.1 逐欄一致。
   **v3.1 變更**：`imageBase64` / `mime` 已移除，改為 `images?: [{ base64, mime }]`（≤3 張）。
-- **`images[]` 的三道上限（3 張 / 每張 1.4MB / 總量 4MB）**：前後端**各自都要檢查**，數值必須相同。
+- **`images[]` 的三道上限（3 張 / 每張 **4MB** / 總量 **10MB**）**：前後端**各自都要檢查**，數值必須相同。
+  （PRD v3.9 §7.5d：API 實際允許 10MB／張、32MB／請求；1568/0.85 的截圖 base64 約 207KB，只用掉單張額度的 5%。）
   前端檢查是體驗（不送註定失敗的請求）、後端檢查是防護（前端可被繞過）。
 - **data URL 前綴**：`compressImage` 回傳 `data:image/jpeg;base64,...`，**前端送出前必須去掉前綴**
   （frontend §4.6 `toImages`）。這一行漏掉會讓後端拿到非法 base64、LLM 直接讀圖失敗，
@@ -124,13 +138,18 @@ P1 → P2 → P3  合併 main → 部署 Vercel
   - **範圍**：`api/parse-post.js`（新增）、`api/_parse-lib.js`（新增）、`api/__tests__/parse-lib.test.js`（新增）、`package.json`（加 `@anthropic-ai/sdk`）
   - **前置**：無
   - **涵蓋**：F-70、**F-71（IG 主路徑）**
-  - **說明**：`POST /api/parse-post`。五段降級階梯（text → oEmbed → og → **`images[]`** → 失敗）、
+  - **說明**：`POST /api/parse-post`。五段降級階梯 —— **順位 1 是 `images[]`（有圖必先讀圖，PRD v3.9 §7.2）**，
+    其後才是 text（≥40 字）→ oEmbed → og → 失敗；使用者填的文字**不論長短**都以 `extraText` 併進同一次讀圖呼叫、
     強制 tool-use（`save_places`，`claude-haiku-4-5`）保證結構化 JSON、`PARSE_PROVIDER` 供應商切換、
     fail-soft **永遠回 200**。
     **v3.1 契約**：`images?: [{ base64, mime }]`，**最多 3 張放進同一個 request、同一次 LLM 呼叫**；
     content block 組裝為「N 個標號 text + N 個 image + 1 個指示 text（放最後）」（backend §6.3）。
     **防護六道**：trip key 存在性檢查（`SUPABASE_URL || VITE_SUPABASE_URL` 讀取鏈，**任一缺失即跳過並記 log**）、
-    每 IP 20 次/小時、`slice(0,12)`、**張數 ≤ 3**、**單張 b64 ≤ 1.4MB**、**總量 ≤ 4MB**；全部外部 fetch 6 秒逾時。
+    每 IP 20 次/小時、`slice(0,12)`、**張數 ≤ 3**、**單張 b64 ≤ 4MB**、**總量 ≤ 10MB**；全部外部 fetch 6 秒逾時。
+    **trip 不存在與限流必須回逐字相同的 `reason` 與 `message`**（否則端點成為 trip key 存在性探測器）；
+    **缺供應商金鑰回獨立的 `reason: "not_configured"`**，不得混進 `rate_limited`。
+    模型字串走 `PARSE_MODEL_ANTHROPIC` / `PARSE_MODEL_GEMINI`（`PARSE_MODEL` 保留為 fallback）；
+    `max_tokens: 4096` 並檢查 `stop_reason === "max_tokens"`。
   - **測試**：**T-78**（`clampPlaces` 截斷至 12、非法 category 落回 `other`、confidence 夾在 0..1）、
     T-76 的階梯判斷層（`resolveSource` 五個順位）、**三道圖片上限各自回 `too_large`**、
     **`buildImageContent` 的 block 序列與順序**。T-76 的 HTTP 層、T-77、T-79 以 curl 對 preview 部署人工驗收。
@@ -169,7 +188,7 @@ P1 → P2 → P3  合併 main → 部署 Vercel
   - **說明**：純函式層 `normalizeName` / `dedupeAgainstSaved` / `suggestDays` / `daysForPlace` / `placeToItem` / `capacityCheck`；
     `share.js` 的 `parseShareParams` / `stripShareParams` / `shortcutPrefix` ＋ **`detectPlatform(url)`**
     （PRD v3.7 §5.3／§6.2 裁定落位；**比對 hostname 並以 `(^|\.)…$` 錨定，嚴禁 `includes`**）；
-    `api.js` 加 `parsePost()`（**`images[]` 契約**）；`image.js` 加 `OCR_MAX = 1024` / `OCR_QUALITY = 0.7`
+    `api.js` 加 `parsePost()`（**`images[]` 契約**）；`image.js` 加 **`OCR_MAX = 1568` / `OCR_QUALITY = 0.85`**（PRD v3.9 §7.5d 實測定案）
     （**不改**既有 `THUMB_MAX = 320`，購物清單照舊）。
   - **測試**：**T-97**（`suggestDays` 七個案例）、T-81 規則層、T-82 試算層、T-83 反查層、T-84 映射層、
     **`detectPlatform` 七個邊界（`?ref=instagram.com` 與 `fakeinstagram.com` 必須回 `other`）**
@@ -219,7 +238,8 @@ P1 → P2 → P3  合併 main → 部署 Vercel
     S-11／S-12／S-14／容量檢查**完全沿用 F6 的實作，不得複製第二套**。
   - **測試**：人工（貼 IG 連結 → 版面即時換成 S-20 且**焦點不動**；貼 `?ref=instagram.com` → **維持一般模式**；
     選 3 張 → 顯示「已選 3 張」且可逐張移除；解析失敗 → IG 聚焦截圖區而非文字欄）。
-    **實作完成後必須跑 T-99**（真實 IG 截圖實測 OCR 參數），結論回寫 PRD §7.5。
+    **T-99 已於 2026-09-02 完成**（PRD §7.5d，`OCR_MAX = 1568` / `OCR_QUALITY = 0.85`）；
+    端點接起來後仍須用實際回傳結果複驗一次（實測判讀者是 Opus，不是 `claude-haiku-4-5`）。
 
 - [ ] **F7** `Add the Pocket view with pocket cards`
   - **範圍**：`src/views/places/PocketView.jsx`（新增，含 C-18 IngestBar、C-27 CapacityNotice）、`src/views/places/PocketCard.jsx`（新增）、`src/views/places/PlaceRow.jsx`（新增）

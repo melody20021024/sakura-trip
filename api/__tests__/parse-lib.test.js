@@ -3,6 +3,7 @@ import {
   platformOf, checkImages, clampPlaces, clampCollection, resolveSource,
   buildImageContent, buildTextContent, ogMeta, rateLimited, _resetRateLimit,
   MAX_IMAGE_B64, MAX_IMAGES_TOTAL_B64, ITEM_TYPE_KEYS,
+  MAX_TITLE_LEN, MAX_SUMMARY_LEN, SAVE_PLACES_TOOL,
 } from "../_parse-lib.js";
 
 const img = (n = 10, mime = "image/jpeg") => ({ base64: "x".repeat(n), mime });
@@ -220,8 +221,32 @@ describe("clampCollection", () => {
     expect(clampCollection({}).title).toBe("收藏的貼文");
     expect(clampCollection(null).title).toBe("收藏的貼文");
   });
-  it("截斷過長標題", () => {
-    expect(clampCollection({ title: "福".repeat(80) }).title).toHaveLength(30);
+
+  it("截斷至 15 / 30 —— 與 PRD §5.2、§7.3 和 tool schema 的字數一致", () => {
+    // 這裡曾是 30 / 60。程式碼是唯一真正把關的地方,卻放行到文件值的兩倍。
+    expect(MAX_TITLE_LEN).toBe(15);
+    expect(MAX_SUMMARY_LEN).toBe(30);
+    const out = clampCollection({ title: "福".repeat(80), summary: "岡".repeat(80) });
+    expect(out.title).toHaveLength(15);
+    expect(out.summary).toHaveLength(30);
+  });
+
+  it("tool schema 對模型講的字數與實際截斷值相同", () => {
+    // 兩者脫節時模型會照著 schema 產 15 字、程式卻允許 30 字,
+    // 於是超長標題只有在模型失控時才會出現 —— 最難重現的那種 bug。
+    const props = SAVE_PLACES_TOOL.input_schema.properties;
+    expect(props.title.description).toContain(`${MAX_TITLE_LEN} 字內`);
+    expect(props.summary.description).toContain(`${MAX_SUMMARY_LEN} 字內`);
+  });
+
+  it("剛好等於上限的字串原樣保留", () => {
+    const out = clampCollection({ title: "福".repeat(15), summary: "岡".repeat(30) });
+    expect(out.title).toHaveLength(15);
+    expect(out.summary).toHaveLength(30);
+  });
+
+  it("summary 缺漏時為空字串,不是 undefined", () => {
+    expect(clampCollection({}).summary).toBe("");
   });
 });
 

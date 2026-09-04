@@ -1,7 +1,7 @@
 # 前後端交叉比對報告 — 櫻旅 v3「口袋地點」
 
-> 建立時間：2026-09-02 ｜ **修訂：2026-09-02（依 PRD v3.7 / UI spec v3.1 回頭同步）** ｜ 狀態：待簽核
-> 比對對象：[frontend/pocket-v3.md](frontend/pocket-v3.md) v3.1.0 ↔ [backend/parse-and-schema-v3.md](backend/parse-and-schema-v3.md) v3.1.0 ↔ [**PRD v3.7**](../01-PRD/PRD-v3-pocket-places.md) ↔ [**UI spec v3.1**](../02-Design/ui-spec-v3-pocket.md)
+> 建立時間：2026-09-02 ｜ **修訂：2026-09-03（依 PRD v3.9 回寫）** ｜ 狀態：待簽核
+> 比對對象：[frontend/pocket-v3.md](frontend/pocket-v3.md) **v3.2.0** ↔ [backend/parse-and-schema-v3.md](backend/parse-and-schema-v3.md) **v3.2.0** ↔ [**PRD v3.9**](../01-PRD/PRD-v3-pocket-places.md) ↔ [**UI spec v3.1**](../02-Design/ui-spec-v3-pocket.md)
 > 範圍：**僅 MVP（PRD §8 的 P1–P10）**。Phase 1.5 地圖（F-79／F-80／F-84～F-87）與 Phase 2 `share_target`（F-82）不列入比對。
 
 ## 0. 本次同步的上游變更（v3.0 → v3.1 比對差異）
@@ -17,6 +17,21 @@
 | 7 | **環境變數顧慮撤銷** | PRD v3.7 §7.4 | §6 Q-10 由「需 CEO 處理」改為**無需任何手動設定** |
 | 8 | **F-78 對 IG 的限制裁定 MVP 不解決** | PRD v3.7 §4.2 | §4 F-78 追溯改為「誠實標示」，**不得規劃 blob 暫存** |
 | 9 | 新增 **T-99**（OCR 參數實測）；**T-98 已完成** | PRD v3.7 §10 | §5 測試對照表新增 T-99、T-98 改為已完成 |
+
+## 0b. 2026-09-03 回寫（依 PRD v3.9）
+
+> ⚠️ **本報告 v3.1 的問題不是漏了某一列，而是「✅ 數值逐一相同」這個結論本身以舊基準做出。**
+> PRD v3.7 → v3.9 把三道圖片上限與 OCR 常數改掉之後，前後端文件各自留著舊值，
+> 對齊矩陣卻仍宣告一致——**一份宣告一致但基準已過期的對齊表，比沒有對齊表更危險**，
+> 因為它讓下一個人省略了自己核對的那一步。以下為回寫後的基準。
+
+| # | 上游變更 | 出處 | 對比對結果的影響 |
+|---|---|---|---|
+| 10 | 三道圖片上限：3 張 / 每張 **4MB** / 總量 **10MB**（原 1.4MB / 4MB）| PRD v3.9 §7.5d | §2 上限列、§3 兩列 `too_large` 全部重列 |
+| 11 | OCR 常數 **1568 / 0.85**（原 1024 / 0.7），**T-99 已完成** | PRD v3.9 §7.5d／§10 | §2 OCR 常數列、§5 T-99 列 |
+| 12 | 降級階梯**順位 1 改為 `images[]`**（有圖必先讀圖）| PRD v3.9 §7.2 | §3「`via: "image"`」的來源說明；後端文件 §6.2 已回寫 |
+| 13 | 新增 **`reason: "not_configured"`**（缺供應商金鑰）| 2026-09-03 PR #16／#17 審查 | §3 新增一列；前端沿用「未知 reason 原樣顯示」既有處理，**不需新增分支** |
+| 14 | **trip 不存在與限流的回應必須逐字相同**（含 `message`）| 同上 | §3 該列改寫 |
 
 ---
 
@@ -42,7 +57,7 @@
 |---|---|---|---|
 | **`ParsePostRequest { trip, url?, text?, images?, cityHint? }`** | `api.parsePost()` 的參數（frontend §5.2 狀態機 + §4.6 `toImages()`）| backend §6.1 Request DTO | ✅ 逐欄一致（**v3.1 變更**）|
 | **`ParseImage { base64, mime }`** | `toImages(shots)` 產生：`base64` 去掉 data URL 前綴、`mime` 固定 `"image/jpeg"` | backend §6.1／§6.3 `buildImageContent` 消費 | ✅ **關鍵對齊點**：`compressImage` 回傳的是 data URL，前端**必須**去前綴，否則後端拿到的不是合法 base64 |
-| **`images` 上限（3 / 1.4MB / 4MB）** | frontend §4.6 前端三道檢查（體驗）| backend §6.5 後端三道檢查（防護）| ✅ 數值逐一相同；**兩邊都要做，前端不得取代後端** |
+| **`images` 上限（3 張 / 每張 4MB / 總量 10MB）** | frontend §4.6 `MAX_SHOTS = 3`／`MAX_SHOT_B64 = 4_000_000`／`MAX_SHOTS_B64_TOTAL = 10_000_000` | backend §6.5 `MAX_IMAGES = 3`／`MAX_IMAGE_B64 = 4_000_000`／`MAX_IMAGES_TOTAL_B64 = 10_000_000` | ✅ **2026-09-03 逐一核對後相同**（前次宣告一致時，兩端其實都還是 1.4MB / 4MB 的舊基準）。**兩邊都要做，前端不得取代後端** |
 | `ParsePostOk { ok, via, source, collection, places[] }` | `IngestSheet` 由 `places[]` 建出 `ReviewRowState[]` | backend §6.1 Response | ✅ |
 | `via: "image"` | 覆核來源列明寫「（從截圖讀出）」 | backend 順位 4 回傳 | ✅ 讓使用者知道這批資料的來源品質 |
 | `ParsedPlace { name, nameJa, category, area, note, confidence }` | `ReviewRowState` 同名同型（多一個本地 `checked` / `duplicate`）| backend §6.3 tool schema + §6.4 `clampPlaces` | ✅ |
@@ -54,7 +69,7 @@
 | 合併規則（含未知欄位穿透） | `lib/merge.js` 實作 | backend §5.1.2 契約 | ✅ 契約唯一來源在後端文件 |
 | 遷移規則 | `lib/migrate.js` 實作 | backend §5.1.1 契約 | ✅ |
 | 容量常數 | `capacityCheck()` 消費 | backend §4.3 定義（PRD v3.5 §5.3 出處）| ✅ |
-| OCR 常數 | `lib/image.js` `OCR_MAX` / `OCR_QUALITY` | 後端不消費（純前端壓縮）| ✅ 無跨端契約，但由 **T-99** 驗收 |
+| OCR 常數 **1568 / 0.85** | `lib/image.js` `OCR_MAX = 1568` / `OCR_QUALITY = 0.85`（frontend §4.6）| 後端不消費（純前端壓縮），但**成本估算依賴它**：784×1568 = 1568 視覺 tokens／張（backend §6.1）| ✅ **T-99 已於 2026-09-02 完成**（PRD §7.5d）。嚴格說不是「無跨端契約」——改小會讓後端的成本與可讀性估算失真 |
 
 **已移除的欄位**：`imageBase64: string` / `mime: string`（v3.0 契約）。此端點尚未上線，**不保留相容分支**；
 前後端文件皆已無此欄位（已 grep 確認）。
@@ -67,9 +82,10 @@
 | 五順位全失敗 | 200 `reason:"need_text_or_image"` | S-13「這個連結讀不到內文…」／S-21「讀不到，IG 一定是這樣…請截一張把說明文字展開的圖」 | S-13 / **S-21** | ✅ |
 | LLM 回空陣列 | 200 `reason:"no_places"` | S-13「找不到具體的店名或景點…」／S-21「這張圖上找不到店名，多半是截到食物畫面」 | S-13 / **S-21** | ✅ |
 | **截圖張數 > 3** | 200 `reason:"too_large"` | 「一次最多 3 張截圖…」 | S-13 / S-21 | ✅ **v3.1 新增**（前端亦擋，只收前 3 張）|
-| **單張 base64 > 1.4MB** | 200 `reason:"too_large"` | 「有一張截圖太大了…」 | S-13 / S-21 | ✅（前端壓縮後近乎不可達）|
-| **總量 > 4MB** | 200 `reason:"too_large"` | 「這幾張截圖加起來太大了…」 | S-13 / S-21 | ✅ **v3.1 新增** |
-| IP 限流 / trip key 不存在 / LLM 例外 | 200 `reason:"rate_limited"` | 「剛剛解析太多次了…你貼的內容還留著」 | S-13 / S-21 | ✅ |
+| **單張 base64 > 4MB** | 200 `reason:"too_large"` | 「有一張截圖太大了…」 | S-13 / S-21 | ✅（1568/0.85 約 207KB／張，實務上不可達）|
+| **總量 > 10MB** | 200 `reason:"too_large"` | 「這幾張截圖加起來太大了…」 | S-13 / S-21 | ✅ **v3.1 新增，v3.2 改值** |
+| **缺供應商金鑰（`ANTHROPIC_API_KEY` / `GEMINI_API_KEY` 未設定）** | 200 `reason:"not_configured"`「解析服務尚未設定金鑰,請聯絡管理者。」 | 走「未知 reason **原樣顯示**」的既有分支，**不需新增程式碼** | S-13 / S-21 | ✅ **v3.2 新增**。刻意不併進 `rate_limited`：那會讓永久性的部署故障看起來像暫時性的負載 |
+| IP 限流 / trip key 不存在 / LLM 例外 | 200 `reason:"rate_limited"` | 「剛剛解析太多次了…你貼的內容還留著」 | S-13 / S-21 | ✅ **限流與「trip 不存在」的 `reason` 與 `message` 必須逐字相同**（v3.2 修正）：PRD §7.4 規定前端一律優先顯示後端 `message`，只要文案不同，端點就仍是 trip key 存在性探測器。回歸測試在 `api/__tests__/parse-post.test.js` |
 | **網路請求本身失敗（fetch reject）** | — | `try/catch` → 視同 `need_text_or_image` | S-13 / S-21 | ✅ 前端補位，不會白畫面 |
 | **只帶 IG 連結（不送出）** | — | 主按鈕改「選擇截圖」＝開檔案選擇器，**不打 API**（DDR-27）| S-20 | ✅ **v3.1 新增**：省下一次註定失敗的請求與一格限流額度 |
 | 離線（未送出） | — | 不呼叫端點，直接存待解析 pocket；**截圖不保存**並顯示警語 | S-14 / S-06 / **S-06b** | ✅ |
@@ -162,7 +178,7 @@
 | T-96 捷徑 URL 帶 `?trip=`、`share=` 不殘留 | 人工（iOS 實機）| — | ⚠️ 人工 |
 | T-97 `suggestDays` 規則 | Vitest | `places.test.js`（7 個案例）| ✅ |
 | **T-98** IG 主路徑實機驗證 | **人工實機（非 Vitest）** | — | ✅ **已於 2026-09-02 完成**；結論已回寫 PRD v3.6／UI v3.1／設計文件 v3.1.0。SA 只需查核 UI 是否照結論分流 |
-| **T-99** OCR 參數實測（v3.1 新增）| **人工實機（非 Vitest）**：需真實 IG 截圖與人眼判讀日文 | frontend §7.2 | ⏳ **實作後必做**。讀不出 → 調高 `OCR_MAX`；撞 1.4MB → 調低 `OCR_QUALITY`；**結論須回寫 PRD §7.5** |
+| **T-99** OCR 參數實測 | **人工實機（非 Vitest）**：需真實 IG 截圖與人眼判讀日文 | frontend §7.2 | ✅ **已於 2026-09-02 完成**（PRD §7.5d）：定案 `OCR_MAX = 1568` / `OCR_QUALITY = 0.85`。⏳ 端點接起來後仍須用實際回傳結果**複驗一次** —— 實測判讀者是 Opus 而非 `claude-haiku-4-5`。**若需再調參，須回寫 PRD §7.5d** |
 | （新增，支撐 S-20/S-21）| `detectPlatform` 邊界 | Vitest `share.test.js` | ✅ **`?ref=instagram.com` 必須回 `other`** |
 | （新增，支撐 `images[]`）| 三道上限各回 `too_large`、`buildImageContent` block 序列 | Vitest `parse-lib.test.js` | ✅ |
 | T-87～T-95 | **Phase 1.5，不列入 MVP 驗收** | — | ➖ 排除 |
@@ -245,7 +261,7 @@
 | 4 | **`Platform` enum 有第三個抄本** | `detectPlatform`（前端 `lib/share.js`）、`platformOf`（後端）、`Pocket.platform`（型別）。三處字面值必須一致。**實作時在 `share.js` 留註解指回 backend §4.2**；前端不得 import serverless 模組 |
 | 5 | 未設計元件的呼叫 | F4／F5／F6／F6b 皆在 F3（`lib/places.js` + `lib/share.js`）之後；F7 組裝、F8 掛進 shell。無前向呼叫 |
 | 6 | 循環依賴 | 依賴為線性 DAG，見 commits-plan-v3 §跨分支衝突檢查 |
-| 7 | **T-99 可能回頭改常數** | `OCR_MAX` / `OCR_QUALITY` 若實測後需調整，只需改 `src/lib/image.js` 一處，但**必須回寫 PRD §7.5**，不得只改程式碼 |
+| 7 | **T-99 可能回頭改常數** | `OCR_MAX` / `OCR_QUALITY` 若複驗後需調整，只需改 `src/lib/image.js` 一處，但**必須回寫 PRD §7.5d**，不得只改程式碼。**2026-09-03 教訓**：v3.7 改了 PRD 卻沒回寫設計文件，本報告因此用舊基準宣告「數值逐一相同」達一整版——**上游一改，四份文件與本表要在同一次一起改** |
 
 ## 8. 結論
 

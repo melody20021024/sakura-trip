@@ -14,8 +14,40 @@ import {
   SYSTEM_PROMPT, SAVE_PLACES_TOOL, rateLimited, FETCH_TIMEOUT_MS,
 } from "./_parse-lib.js";
 
-const PROVIDER = process.env.PARSE_PROVIDER || "anthropic";
-const MODEL = process.env.PARSE_MODEL || "claude-haiku-4-5";
+// Read at request time, not module load: a serverless instance is reused across
+// requests but the tests need to drive this, and `missingProviderKey()` below
+// has to observe the *runtime* env — the Anthropic SDK reads the key itself, so
+// there is no way to tell from the code whether it is set.
+const providerOf = () => process.env.PARSE_PROVIDER || "anthropic";
+// One override per provider. `PARSE_MODEL` was shared by both, so switching
+// PARSE_PROVIDER to gemini while an old PARSE_MODEL was still set would post
+// `claude-haiku-4-5` to Google and fail with an opaque 404. Kept as a fallback
+// so a deployment that only sets PARSE_MODEL keeps working.
+const MODEL_DEFAULTS = { anthropic: "claude-haiku-4-5", gemini: "gemini-2.0-flash" };
+const modelFor = (provider) =>
+  (provider === "gemini"
+    ? process.env.PARSE_MODEL_GEMINI
+    : process.env.PARSE_MODEL_ANTHROPIC)
+  || process.env.PARSE_MODEL
+  || MODEL_DEFAULTS[provider]
+  || MODEL_DEFAULTS.anthropic;
+
+// The env var each provider needs. Checked before we call out, because a
+// missing key otherwise throws inside the SDK, lands in the generic catch and
+// comes back as `rate_limited`「解析服務暫時不通」 — indistinguishable from a
+// network blip or a real 429, and therefore the hardest failure to diagnose.
+// (As of 2026-09-03 `ANTHROPIC_API_KEY` is in fact NOT set on Vercel: the
+// project only has AERODATABOX_KEY and the VITE_SUPABASE_* pair. The design
+// doc's claim that the v2 flight feature already set it confused it with
+// AERODATABOX_KEY, which is what api/flight.js actually reads.)
+const PROVIDER_KEY_ENV = {
+  anthropic: "ANTHROPIC_API_KEY",
+  gemini: "GEMINI_API_KEY",
+};
+const missingProviderKey = (provider) => {
+  const name = PROVIDER_KEY_ENV[provider] || PROVIDER_KEY_ENV.anthropic;
+  return String(process.env[name] || "").trim() ? "" : name;
+};
 
 // No-prefix names first so a future rename to the standard ones takes over with
 // no code change. The VITE_ pair already exists in the Vercel project settings,
@@ -25,6 +57,16 @@ const SB_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
 const fail = (res, reason, message) => res.status(200).json({ ok: false, reason, message });
+
+// The single response for every "we are not going to parse this for you"
+// case that must stay indistinguishable from the outside — currently the IP
+// rate limit and an unknown trip key. Callers pass `why` for the log only;
+// it never reaches the client.
+const RATE_LIMITED_MESSAGE = "剛剛解析太多次了,等一下再試。你貼的內容還留著。";
+function throttled(res, why) {
+  console.warn(`[parse-post] refused: ${why}`);
+  return fail(res, "rate_limited", RATE_LIMITED_MESSAGE);
+}
 
 // Cheap gate so a stranger with the URL can't burn the API key. Missing config
 // degrades to rate-limiting only: a misconfigured env var must not take the
@@ -50,11 +92,19 @@ async function tripExists(trip) {
   }
 }
 
+// 12 places × (name / nameJa / area / note, in CJK) runs to roughly 3–4k output
+// tokens, so the old 2048 was tight for a full list. A truncated
+// `tool_use.input` is still a valid-looking object, so it passes clampPlaces
+// silently and the user simply gets fewer places than the post contained.
+// Raise the ceiling and log when we hit it; output tokens are billed on use,
+// so the headroom costs nothing until it is needed.
+const MAX_OUTPUT_TOKENS = 4096;
+
 async function callAnthropic(content) {
   const client = new Anthropic();
   const msg = await client.messages.create({
-    model: MODEL,
-    max_tokens: 2048,
+    model: modelFor("anthropic"),
+    max_tokens: MAX_OUTPUT_TOKENS,
     temperature: 0,
     system: SYSTEM_PROMPT,
     tools: [SAVE_PLACES_TOOL],
@@ -63,6 +113,12 @@ async function callAnthropic(content) {
     tool_choice: { type: "tool", name: "save_places" },
     messages: [{ role: "user", content }],
   });
+  if (msg.stop_reason === "max_tokens") {
+    console.warn(
+      "[parse-post] anthropic hit max_tokens; the place list may be truncated",
+      { model: modelFor("anthropic"), max_tokens: MAX_OUTPUT_TOKENS }
+    );
+  }
   const block = msg.content.find((b) => b.type === "tool_use");
   return block ? block.input : null;
 }
@@ -72,7 +128,7 @@ async function callAnthropic(content) {
 async function callGemini(content) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY missing");
-  const model = process.env.PARSE_MODEL || "gemini-2.0-flash";
+  const model = modelFor("gemini");
   const parts = content.map((b) =>
     b.type === "image"
       ? { inline_data: { mime_type: b.source.media_type, data: b.source.data } }
@@ -133,11 +189,23 @@ export default async function handler(req, res) {
 
   const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim()
     || req.socket?.remoteAddress || "";
-  if (rateLimited(ip)) {
-    return fail(res, "rate_limited", "剛剛解析太多次了,等一下再試。你貼的內容還留著。");
-  }
-  if (!(await tripExists(trip))) {
-    return fail(res, "rate_limited", "這份行程找不到,請從行程頁重新開啟。");
+  if (rateLimited(ip)) return throttled(res, "rate limit");
+  // Same reason AND the same message as the rate-limit branch, on purpose.
+  // Anything that distinguishes the two turns this endpoint into an oracle for
+  // 「這個 22 字元的 trip key 存不存在」 — and PRD §7.4 has the front end always
+  // prefer the backend `message`, so a different sentence leaks just as loudly
+  // as a different `reason` would. The real cause goes to the log instead.
+  if (!(await tripExists(trip))) return throttled(res, `unknown trip key ${trip}`);
+
+  const provider = providerOf();
+  const missingKey = missingProviderKey(provider);
+  if (missingKey) {
+    // Before the provider call, and loud: this is a deployment fault, not a
+    // user fault, and it must not hide inside the generic 「暫時不通」 bucket.
+    console.error(
+      `[parse-post] ${missingKey} is not set; provider "${provider}" cannot be called`
+    );
+    return fail(res, "not_configured", "解析服務尚未設定金鑰,請聯絡管理者。");
   }
 
   let ladder;
@@ -161,9 +229,9 @@ export default async function handler(req, res) {
 
   let raw;
   try {
-    raw = PROVIDER === "gemini" ? await callGemini(content) : await callAnthropic(content);
+    raw = provider === "gemini" ? await callGemini(content) : await callAnthropic(content);
   } catch (e) {
-    console.error("[parse-post] provider", PROVIDER, e?.message || e);
+    console.error("[parse-post] provider", provider, e?.message || e);
     return fail(res, "rate_limited", "解析服務暫時不通,等一下再試。你貼的內容還留著。");
   }
 
