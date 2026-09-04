@@ -46,6 +46,7 @@
 > |---|---|---|
 > | 1 | 全文版本引用 v3.9 → **v3.10** | 標頭、§1、§4.6 |
 > | 2 | `failReason` 的 union 補上 **`not_configured`** 與新增的 **`upstream_error`**（供應商呼叫失敗，由 `rate_limited` 拆出）。兩者都走既有的「未知 reason **原樣顯示後端 `message`**」分支，**仍然不需新增 UI 分支**；補進型別只是不讓 union 對不上後端契約 | §5.2 |
+>
 > 本文件為**增修**，不取代 [app-v2.md](app-v2.md) v1.0.0；v2 的元件結構、`useTrip` 資料流、同步引擎規格全數繼續有效。
 > 涵蓋範圍＝ **PRD §8 的 MVP（P1–P10）**：F-69～F-78、F-81、F-83。
 > **不涵蓋**：Phase 1.5 地圖（F-79／F-80／F-84～F-87）、Phase 2 `share_target`（F-82）。

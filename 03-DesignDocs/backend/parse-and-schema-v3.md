@@ -815,7 +815,7 @@ function buildImageContent(images, cityHintLine, extraText = "") {
 | 指示文字放在**所有圖片之後** | 圖片先進上下文、指示緊貼提問位置，是 Anthropic 多模態的建議順序 |
 | 指示文字**必須明寫「同一則貼文」** | 不寫的話模型會把 3 張圖當 3 則貼文，回出三組 title 或重複的地點 |
 | 同一家店只回一次 | 連續截圖必然重疊（caption 上下半段會有一兩行重複）|
-| `media_type` 取 `img.mime || "image/jpeg"` | 前端 `compressImage` 一律輸出 JPEG；`||` 只是防呆 |
+| `media_type` 取 `img.mime \|\| "image/jpeg"` | 前端 `compressImage` 一律輸出 JPEG；`\|\|` 只是防呆 |
 | 仍走**強制 tool-use** | 與文字路徑完全相同，`claude-haiku-4-5` 支援 `tool_choice: {type:"tool"}`，不需要為多圖改變輸出約束 |
 
 > **`max_tokens` 由 2048 提高到 4096（2026-09-03 提出，PRD v3.10 §7.5c 已裁定採納）**：PRD v3.9 以前寫「維持 2048 即可」，理由是多張圖增加的是
