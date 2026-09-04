@@ -4,7 +4,7 @@
 
 :::info
 功能名稱：v3 口袋地點（截圖／貼上收藏 → AI 解析覆核 → 建議日期 → 寫入行程 → 導航）
-版本：**3.2.1**（**2026-09-04 依 PRD v3.10 回寫**；前版 3.2.0 依 PRD v3.9、3.1.0 依 PRD v3.7 / UI spec v3.1）
+版本：**3.2.2**（**2026-09-04 依 PRD v3.11 回寫**；前版 3.2.1 依 PRD v3.10、3.2.0 依 PRD v3.9、3.1.0 依 PRD v3.7 / UI spec v3.1）
 最後更新：2026-09-04
 作者：程式開發員
 :::
@@ -46,13 +46,25 @@
 > |---|---|---|
 > | 1 | 全文版本引用 v3.9 → **v3.10** | 標頭、§1、§4.6 |
 > | 2 | `failReason` 的 union 補上 **`not_configured`** 與新增的 **`upstream_error`**（供應商呼叫失敗，由 `rate_limited` 拆出）。兩者都走既有的「未知 reason **原樣顯示後端 `message`**」分支，**仍然不需新增 UI 分支**；補進型別只是不讓 union 對不上後端契約 | §5.2 |
+>
 > 本文件為**增修**，不取代 [app-v2.md](app-v2.md) v1.0.0；v2 的元件結構、`useTrip` 資料流、同步引擎規格全數繼續有效。
 > 涵蓋範圍＝ **PRD §8 的 MVP（P1–P10）**：F-69～F-78、F-81、F-83。
 > **不涵蓋**：Phase 1.5 地圖（F-79／F-80／F-84～F-87）、Phase 2 `share_target`（F-82）。
 
+> **v3.2.2 同步摘要（2026-09-04 依 PRD v3.11 回寫）**
+>
+> 上游由 v3.10 進到 **v3.11**（§7.1／§7.4 裁定 Q-15：`upstream_error` 正式進入 `reason` 列舉）。
+> §5.2 的 `failReason` union 在 v3.2.1 就已補上此值，**前端沒有任何變更**；本次只做兩件事：
+>
+> | # | 變更 | 影響章節 |
+> |---|---|---|
+> | 1 | 全文版本引用 v3.10 → **v3.11** | 標頭、§1 |
+> | 2 | 修好 v3.2.1 摘要表後方缺少的 `>` —— 它讓下面「本文件為增修／涵蓋範圍／不涵蓋」三行在 GitHub 上被吃進表格、渲染成表格列。**那三行正是驗收範圍的界定文字** | 本節 |
+>
+
 ## 1. 相關連結
 
-- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.10**）
+- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.11**）
 - UI 規範：[../../02-Design/ui-spec-v3-pocket.md](../../02-Design/ui-spec-v3-pocket.md)（**v3.1**：P-06、C-18～**C-30**、S-01～**S-21**、DDR-09～**DDR-32**）
 - UI 原型：[../../02-Design/prototype-v3-pocket.html](../../02-Design/prototype-v3-pocket.html)
 - 後端 / 資料契約：[../backend/parse-and-schema-v3.md](../backend/parse-and-schema-v3.md)

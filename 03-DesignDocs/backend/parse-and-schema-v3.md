@@ -4,7 +4,7 @@
 
 :::info
 功能名稱：v3「口袋地點」後端／資料層（遷移前向相容修正、schema v5、`/api/parse-post`）
-版本：**3.2.1**（**2026-09-04 依 PRD v3.10 回寫**；前版 3.2.0 依 PRD v3.9、3.1.0 依 PRD v3.7 / UI spec v3.1）
+版本：**3.2.2**（**2026-09-04 依 PRD v3.11 回寫**；前版 3.2.1 依 PRD v3.10、3.2.0 依 PRD v3.9、3.1.0 依 PRD v3.7 / UI spec v3.1）
 最後更新：2026-09-04
 作者：程式開發員
 :::
@@ -22,7 +22,7 @@
 
 > **v3.2.0 同步摘要（2026-09-03 依 PRD v3.9 回寫）**
 >
-> 以下五處是 PRD v3.7～v3.9 更新後留在本文件的殘留，已回寫。（當時以 PRD v3.9 為準；**現行唯一準則是 v3.10**，見下方 v3.2.1 摘要。）
+> 以下五處是 PRD v3.7～v3.9 更新後留在本文件的殘留，已回寫。（當時以 PRD v3.9 為準；**現行唯一準則是 v3.11**，見下方 v3.2.2 摘要。）
 >
 > | # | 原本寫的 | 現在（PRD v3.9） | 影響章節 |
 > |---|---|---|---|
@@ -51,13 +51,26 @@
 >
 > 另新增：§5.5／§6.1 明寫「金鑰檢查排在限流與 trip 檢查之後」是**硬性順序**，並已有回歸測試鎖住。
 
+> **v3.2.2 同步摘要（2026-09-04 依 PRD v3.11 回寫）**
+>
+> 上游由 v3.10 進到 **v3.11**（§7.1／§7.4 裁定 Q-15：`upstream_error` 正式進入 `reason` 列舉）。
+> 實作與本文件早已在用這個碼，本次只是把「PRD 尚未列」的註記換成正式出處。**無任何行為變更。**
+>
+> | # | 變更 | 影響章節 |
+> |---|---|---|
+> | 1 | §6.5「`upstream_error` 為什麼要拆出來」的結尾由「尚未列入 PRD，已記 Q-15」改為引用 **PRD v3.11 §7.1／§7.4** 的裁定 | §6.5 |
+> | 2 | `max_tokens` 說明改用 PRD §7.5c 修正後的口徑：**「12 筆 × 四欄位」只是量級參考**，schema 只對 `note` 寫 60 字（且僅為 `description`，無 `maxLength`），`name` / `nameJa` / `area` 無任何長度上限，**真正的安全網是 `stop_reason` 檢查，不是 4096 這個數字** | §6.3（說明段、pseudo-code 註解、模型參數說明）|
+> | 3 | §6.2 的歷史註記由「2026-09-03 依 PRD v3.10」改回 **v3.9** —— v3.2.1 的批次替換掃到了不該掃的日期性註記（v3.10 在 2026-09-03 還不存在）| §6.2 |
+> | 4 | 修好 §6.3 多圖組裝表 `media_type` 那一列：`\|\|` 未跳脫，整格「理由」欄在 GitHub 上被吃掉 | §6.3 |
+>
+
 > 註：本專案無 NestJS/Prisma。「後端」＝ **Supabase BaaS（Postgres jsonb + Realtime）** ＋ **Vercel Serverless Functions**。
 > 合併／遷移邏輯執行在前端，但屬**多客戶端共享契約**，依 v2 慣例統一由本文件管轄（見 [sync-and-apis.md](sync-and-apis.md) §5 前言）。
 > 本文件為**增修**，不取代 `sync-and-apis.md` v1.0.0；該文件的 v2 契約全數繼續有效。
 
 ## 1. 相關連結
 
-- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.10**，F-69～F-78、F-81、F-83；§2 Phase 0、§5 資料模型、§7 端點規格與 **§7.5b 多張截圖**、**§7.5d OCR 參數實測結果**、§10 測試規則含 **T-99**）
+- PRD：[../../01-PRD/PRD-v3-pocket-places.md](../../01-PRD/PRD-v3-pocket-places.md)（**v3.11**，F-69～F-78、F-81、F-83；§2 Phase 0、§5 資料模型、§7 端點規格與 **§7.5b 多張截圖**、**§7.5d OCR 參數實測結果**、§10 測試規則含 **T-99**）
 - UI 規範：[../../02-Design/ui-spec-v3-pocket.md](../../02-Design/ui-spec-v3-pocket.md)（**v3.1**，依平台分流、C-30 ShotPicker）
 - UI 原型：[../../02-Design/prototype-v3-pocket.html](../../02-Design/prototype-v3-pocket.html)
 - 前端設計文件：[../frontend/pocket-v3.md](../frontend/pocket-v3.md)
@@ -669,11 +682,14 @@ interface ParsedPlace {
 > 後者「解析服務暫時不通」）。這正是 Q-13 想根除的型態：一個 reason 承載多種語意，前端與 log 都分不出來。
 > **只能拆供應商錯誤這一種**：它發生在 trip 檢查**之後**（見 §5.5 的關卡順序），不論 trip key 存不存在都到不了這裡，
 > 因此不洩漏存在性；而「限流」與「trip 不存在」兩者**必須繼續逐字不可區分**（PRD §7.4 硬性），不得比照辦理。
-> `upstream_error` **尚未列入 PRD §7.1 的 `reason` 列舉**，已記 [questions.md](../questions.md) **Q-15** 請技術總監補。
+> **PRD v3.11 §7.1／§7.4 已裁定 Q-15**（採納「補進列舉」）：`upstream_error` 正式進入 `reason` 列舉，
+> §7.4 並把上面這段理由寫進 PRD 本文 —— 供應商錯誤發生在 trip key 檢查**之後**，抽出它不洩漏存在性；
+> `rate_limited` 保留給「限流」與「trip 不存在」共用，且兩者的 `message` 必須逐字相同。
+> 本文件與 PRD 現已一致，Q-15 結案。
 
 ### 6.2 降級階梯（`resolveSource`）
 
-> **2026-09-03 依 PRD v3.10 §7.2 回寫。** 本節 v3.1.0 的排序（`images[]` 排第 4、在 og:meta 之下）
+> **2026-09-03 依 PRD v3.9 §7.2 回寫。** 本節 v3.1.0 的排序（`images[]` 排第 4、在 og:meta 之下）
 > 與 PRD 的「**有圖必先讀圖**」直接矛盾，且矛盾的方向會造成真實故障：使用者上傳了截圖，
 > 卻因為 og 僥倖回了一段無關文字而**完全不看圖**。實作（`api/_parse-lib.js`）走的是 PRD 的順序。
 
@@ -750,7 +766,8 @@ const SAVE_PLACES_TOOL = {
   },
 };
 
-const MAX_OUTPUT_TOKENS = 4096;   // PRD v3.10 §7.5c 裁定（Q-12）;上界是 12 筆地點,不是圖片張數
+const MAX_OUTPUT_TOKENS = 4096;   // PRD v3.10 §7.5c 裁定（Q-12）。看的是輸出量,不是圖片張數;
+                                  // 4096 只是量級餘裕,真正的安全網是下面的 stop_reason 檢查
 
 const msg = await client.messages.create({
   model: modelFor("anthropic"),                  // PARSE_MODEL_ANTHROPIC || PARSE_MODEL || claude-haiku-4-5
@@ -761,7 +778,8 @@ const msg = await client.messages.create({
   tool_choice: { type: "tool", name: "save_places" },   // 強制,保證回結構化 JSON
   messages: [{ role: "user", content: userContent }],   // 見下
 });
-// 上限再高也要知道自己撞到了(PRD v3.10 §7.5c)。被截斷時 tool_use.input 仍是個
+// 這行不是可選的(PRD v3.10 §7.5c):schema 沒有給 name/nameJa/area 任何長度上限,
+// 所以 4096 也不保證夠。被截斷時 tool_use.input 仍是個
 // 看起來完整的物件,clampPlaces 照收,沒有這行 log 就完全沒有線索。
 if (msg.stop_reason === "max_tokens") {
   console.warn("[parse-post] anthropic hit max_tokens; the place list may be truncated",
@@ -815,15 +833,25 @@ function buildImageContent(images, cityHintLine, extraText = "") {
 | 指示文字放在**所有圖片之後** | 圖片先進上下文、指示緊貼提問位置，是 Anthropic 多模態的建議順序 |
 | 指示文字**必須明寫「同一則貼文」** | 不寫的話模型會把 3 張圖當 3 則貼文，回出三組 title 或重複的地點 |
 | 同一家店只回一次 | 連續截圖必然重疊（caption 上下半段會有一兩行重複）|
-| `media_type` 取 `img.mime || "image/jpeg"` | 前端 `compressImage` 一律輸出 JPEG；`||` 只是防呆 |
+| `media_type` 取 `img.mime \|\| "image/jpeg"` | 前端 `compressImage` 一律輸出 JPEG；`\|\|` 只是防呆 |
 | 仍走**強制 tool-use** | 與文字路徑完全相同，`claude-haiku-4-5` 支援 `tool_choice: {type:"tool"}`，不需要為多圖改變輸出約束 |
 
 > **`max_tokens` 由 2048 提高到 4096（2026-09-03 提出，PRD v3.10 §7.5c 已裁定採納）**：PRD v3.9 以前寫「維持 2048 即可」，理由是多張圖增加的是
-> **input** tokens——這個理由本身正確，但它量的是錯的那一軸。輸出的上界不是圖片張數，而是
-> **12 筆地點 × (`name` / `nameJa` / `area` / `note`)**；以繁中／日文計約 3–4k output tokens，`2048` 落在
-> 這個最壞情況之下。被截斷時 `tool_use.input` 仍是個**看起來完整的物件**，`clampPlaces` 照收，
-> 使用者只會發現「店比貼文裡少」而沒有任何線索。因此：`max_tokens: 4096`，並在
-> `stop_reason === "max_tokens"` 時 `console.warn`。輸出 token 只在真的用到時才計費，餘裕不花錢。
+> **input** tokens——這個理由本身正確，但它答錯了問題。決定 `max_tokens` 的不是圖片張數，是**輸出上界**。
+> 以 `clampPlaces` 的截斷值粗估，12 筆地點（`name` / `nameJa` / `area` / `note`）加 `title` / `summary`
+> 與 JSON 結構開銷，滿載約 **3–4k output tokens**，`2048` 落在這個數字之下。
+>
+> ⚠️ **那個算式只是量級參考，不是上界的保證**（PRD §7.5c，2026-09-03 由程式審查員指出並修正措辭）：
+> §7.3 的 tool schema **只對 `note` 寫「60 字內」**，而且那也只是 `description` 的文字提示、不是 `maxLength`；
+> `name` / `nameJa` / `area` **既無長度規定也無 `maxLength`**。模型完全可以回得比 3–4k 更長 ——
+> `clampPlaces` 是**收到之後**才截斷的，攔不住已經被 `max_tokens` 砍掉的那一段。
+>
+> 所以**真正的安全網是 `stop_reason === "max_tokens"` 的檢查，不是 4096 這個數字**。
+> 4096 只是把「撞到上限」從常見壓成罕見；**檢查才保證撞到時不會無聲無息**，兩者不可互相取代，
+> 尤其不能因為「4096 應該夠了」就把那行 `console.warn` 當成可選的。
+> 被截斷時 `tool_use.input` 仍是個**看起來完整的物件**，`clampPlaces` 照收、端點照回 `ok:true`，
+> 使用者只會發現「店比貼文裡少」，而 log 裡除了這行 warn 之外沒有任何線索。
+> 輸出 token 只在真的用到時才計費，餘裕不花錢。
 > **PRD v3.10 §7.5c 已裁定採納此修正（Q-12 結案）**，本文件與 PRD 現已一致。
 
 > **多圖的 input token 估算（PRD v3.10 §7.5d）**：1568 視覺 tokens／張（不是 v3.1.0 寫的 2.7k），3 張約 4.7k。
@@ -838,7 +866,7 @@ function buildImageContent(images, cityHintLine, extraText = "") {
   也不要猜補。這一條直接對應 F-72「覆核從保險變成必經校對」——`confidence` 是覆核清單預設不勾的依據，
   模型硬猜會讓那道防線失效。
 
-**模型參數說明**：`claude-haiku-4-5` 支援 `temperature`（PRD 指定 0）與強制 `tool_choice`；本呼叫不啟用 extended thinking（省成本、本任務不需要）。`max_tokens: 4096`（見上方說明）；模型字串取自 `PARSE_MODEL_ANTHROPIC || PARSE_MODEL || "claude-haiku-4-5"`。
+**模型參數說明**：`claude-haiku-4-5` 支援 `temperature`（PRD 指定 0）與強制 `tool_choice`；本呼叫不啟用 extended thinking（省成本、本任務不需要）。`max_tokens: 4096`，**且必須搭配 `stop_reason` 檢查**（見上方說明：4096 是量級餘裕，不是上界保證）；模型字串取自 `PARSE_MODEL_ANTHROPIC || PARSE_MODEL || "claude-haiku-4-5"`。
 
 ### 6.4 結果清洗（`_parse-lib.js`，純函式，可 vitest 測）
 

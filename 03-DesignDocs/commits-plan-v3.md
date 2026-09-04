@@ -1,7 +1,7 @@
 # Commit Plan: 櫻旅 v3「口袋地點」MVP
 
-> 建立時間：2026-09-02 ｜ **修訂：2026-09-04（依 PRD v3.10 回寫）** ｜ 狀態：**待確認**
-> 對應：[**PRD v3.10**](../01-PRD/PRD-v3-pocket-places.md) §8 的 P1–P10 ｜ [**UI spec v3.1**](../02-Design/ui-spec-v3-pocket.md)
+> 建立時間：2026-09-02 ｜ **修訂：2026-09-04（依 PRD v3.11 回寫）** ｜ 狀態：**待確認**
+> 對應：[**PRD v3.11**](../01-PRD/PRD-v3-pocket-places.md) §8 的 P1–P10 ｜ [**UI spec v3.1**](../02-Design/ui-spec-v3-pocket.md)
 > 設計文件：[frontend/pocket-v3.md](frontend/pocket-v3.md) v3.1.0｜[backend/parse-and-schema-v3.md](backend/parse-and-schema-v3.md) v3.1.0｜[cross-check-v3.md](cross-check-v3.md)
 > 範圍：**僅 MVP**。Phase 1.5 地圖（M1–M8）與 Phase 2 `share_target` 不在本計畫。
 
@@ -38,8 +38,18 @@
 | # | 改動 | 出處 |
 |---|---|---|
 | 6 | `max_tokens` 4096 + `stop_reason` 檢查、`bad_request` / `not_configured` 進 §7.1 —— 出處由「PR 審查意見」升級為 **PRD 本文** | PRD v3.10 §7.5c／§7.1 |
-| 7 | **B1 追加**：供應商呼叫失敗回**新的 `upstream_error`**（自 `rate_limited` 拆出，只拆這一種；「限流」與「trip 不存在」仍須逐字不可區分）| 2026-09-04 實作（PRD §7.1 尚未列，見 questions.md **Q-15**）|
+| 7 | **B1 追加**：供應商呼叫失敗回**新的 `upstream_error`**（自 `rate_limited` 拆出，只拆這一種；「限流」與「trip 不存在」仍須逐字不可區分）| **PRD v3.11 §7.1／§7.4**（Q-15 結案）|
 | 8 | **B1 追加**：金鑰檢查排在限流與 trip 檢查**之後**的順序須有回歸測試鎖住 | PRD v3.10 §7.4 |
+
+## 0d. 2026-09-04 回寫（依 PRD v3.11）
+
+> 0c 的第 7 列把 `upstream_error` 的出處記成「2026-09-04 實作（PRD §7.1 尚未列）」。
+> **PRD v3.11 已裁定 Q-15**，出處升級為 PRD 本文。**commit 切分不變**，這裡只是把依據對齊。
+
+| # | 改動 | 出處 |
+|---|---|---|
+| 9 | `upstream_error` 正式進 §7.1 `reason` 列舉，§7.4 記下「只拆這一種」的理由（Q-15 結案）—— 出處由「實作」升級為 **PRD 本文** | PRD v3.11 §7.1／§7.4 |
+| 10 | B1 的敘述補上 `upstream_error`，並把 `max_tokens` 一句改為「**4096 且必須檢查 `stop_reason`**」（4096 是量級餘裕，檢查才是安全網）| PRD §7.5c |
 
 ## 分支規劃
 
@@ -158,9 +168,11 @@ P1 → P2 → P3  合併 main → 部署 Vercel
     **防護六道**：trip key 存在性檢查（`SUPABASE_URL || VITE_SUPABASE_URL` 讀取鏈，**任一缺失即跳過並記 log**）、
     每 IP 20 次/小時、`slice(0,12)`、**張數 ≤ 3**、**單張 b64 ≤ 4MB**、**總量 ≤ 10MB**；全部外部 fetch 6 秒逾時。
     **trip 不存在與限流必須回逐字相同的 `reason` 與 `message`**（否則端點成為 trip key 存在性探測器）；
-    **缺供應商金鑰回獨立的 `reason: "not_configured"`**，不得混進 `rate_limited`。
+    **缺供應商金鑰回獨立的 `reason: "not_configured"`**、**供應商呼叫失敗回獨立的 `reason: "upstream_error"`**，
+    兩者都不得混進 `rate_limited`（`rate_limited` 只留給「限流」與「trip 不存在」共用，見上一行）。
     模型字串走 `PARSE_MODEL_ANTHROPIC` / `PARSE_MODEL_GEMINI`（`PARSE_MODEL` 保留為 fallback）；
-    `max_tokens: 4096` 並檢查 `stop_reason === "max_tokens"`。
+    `max_tokens: 4096` **且必須檢查 `stop_reason === "max_tokens"`** —— schema 沒有給
+    `name` / `nameJa` / `area` 任何長度上限，4096 只是量級餘裕，**檢查才是安全網**（PRD §7.5c）。
   - **測試**：**T-78**（`clampPlaces` 截斷至 12、非法 category 落回 `other`、confidence 夾在 0..1）、
     T-76 的階梯判斷層（`resolveSource` 五個順位）、**三道圖片上限各自回 `too_large`**、
     **`buildImageContent` 的 block 序列與順序**。T-76 的 HTTP 層、T-77、T-79 以 curl 對 preview 部署人工驗收。
