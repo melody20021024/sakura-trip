@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |------|------|
-| 文件版本 | v3.9（增修，不取代 `PRD.md` v2.0）。**v3.9：T-99 實測完成 —— `OCR_MAX` 1024→1568、`OCR_QUALITY` 0.7→0.85、單張上限 1.4MB→4MB**，依據為 Haiku 4.5 屬 Standard tier（原生上限 1568px／1568 視覺 token）。**v3.8：降級階梯改為「有圖必先讀圖」**、補多圖 LLM 組裝規則與兩個靜默失敗陷阱、修好 §4.2 被切斷的表格與 §9 風險 #2 的改版殘留。**v3.7：截圖契約擴充為 `images[]`（上限 3 張）**，並裁定離線 IG 不在 MVP 解決、`detectPlatform` 落位 `lib/share.js`、新增 T-99 OCR 參數驗收。**v3.6：T-98 實機驗證推翻「貼文文字為 IG 主路徑」的假設，截圖升回 IG 主路徑，UI 改為依平台分流**。**v3.5 依設計文件階段回報修正 §2.3 遺漏的 `mergeTrip` 破口（Q-01，阻斷級）**，並補 Q-02~Q-06。v3.4 依 UI 設計階段回報修正 F-76 文案矛盾、補 F-72 同名規則與 F-78 commit 歸屬、修正 T-83 措辭、裁定 `nameJa` 唯讀。v3.2 改為 App 內原生地圖；v3.3 因 CEO 拍板：建議日期進 MVP、iOS 捷徑與貼上同一輪、地圖降為加分（見 §1.6）；v3.3.1 修正三處內部矛盾並補 T-98 |
+| 文件版本 | v3.10（增修，不取代 `PRD.md` v2.0）。**v3.10：裁定 Q-12（`max_tokens` 2048→4096，原理由答錯問題）與 Q-13（補 `bad_request` / `not_configured`，並明訂限流與 trip 不存在必須逐字不可區分）**。**v3.9：T-99 實測完成 —— `OCR_MAX` 1024→1568、`OCR_QUALITY` 0.7→0.85、單張上限 1.4MB→4MB**，依據為 Haiku 4.5 屬 Standard tier（原生上限 1568px／1568 視覺 token）。**v3.8：降級階梯改為「有圖必先讀圖」**、補多圖 LLM 組裝規則與兩個靜默失敗陷阱、修好 §4.2 被切斷的表格與 §9 風險 #2 的改版殘留。**v3.7：截圖契約擴充為 `images[]`（上限 3 張）**，並裁定離線 IG 不在 MVP 解決、`detectPlatform` 落位 `lib/share.js`、新增 T-99 OCR 參數驗收。**v3.6：T-98 實機驗證推翻「貼文文字為 IG 主路徑」的假設，截圖升回 IG 主路徑，UI 改為依平台分流**。**v3.5 依設計文件階段回報修正 §2.3 遺漏的 `mergeTrip` 破口（Q-01，阻斷級）**，並補 Q-02~Q-06。v3.4 依 UI 設計階段回報修正 F-76 文案矛盾、補 F-72 同名規則與 F-78 commit 歸屬、修正 T-83 措辭、裁定 `nameJa` 唯讀。v3.2 改為 App 內原生地圖；v3.3 因 CEO 拍板：建議日期進 MVP、iOS 捷徑與貼上同一輪、地圖降為加分（見 §1.6）；v3.3.1 修正三處內部矛盾並補 T-98 |
 | 撰寫角色 | 技術總監 |
 | 撰寫日期 | 2026-09-01 |
 | 前一版 | v2（已上線，SA 第二輪通過，Vercel 部署中）|
@@ -653,7 +653,8 @@ POST /api/parse-post
       places: [ { name, nameJa, category, area, note, confidence } ] }
 
 200 { ok: false,
-      reason: "need_text_or_image" | "no_places" | "too_large" | "rate_limited",
+      reason: "bad_request" | "need_text_or_image" | "no_places" | "too_large"
+            | "rate_limited" | "not_configured",
       message: "<給使用者看的繁中訊息>" }
 ```
 
@@ -710,6 +711,8 @@ const SB_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_K
 
 無前綴的名稱排在前面，日後若有人改用標準命名可無縫接手。**兩者任一缺失即跳過 trip key 檢查、只保留 IP 限流並在 log 留警告**，不得因缺變數而讓端點整個失效 |
 | 每 IP 滑動視窗限流 | 記憶體 `Map`，如 20 次/小時。冷啟動會重置，防護力弱但免費且有摩擦力 |
+| **存在性不可區分**（2026-09-03 補）| **「限流」與「trip key 不存在」對外必須完全無法分辨。** 共用 `reason: "rate_limited"` **還不夠** —— PRD 規定前端一律優先顯示後端的 `message`，所以連 `message` 也必須**逐字相同**；真正的原因只寫進 `console.warn`。否則端點就成了 trip key 的存在性探測器，而 trip key 是本專案**唯一的存取邊界** |
+| **供應商金鑰檢查**（2026-09-03 補，Q-13）| 呼叫供應商前先確認對應金鑰存在（`anthropic` → `ANTHROPIC_API_KEY`；`gemini` → `GEMINI_API_KEY`），缺少時回**獨立的 `not_configured`**，不得混進 `rate_limited` —— 對一個永久缺失的金鑰說「等一下再試」，使用者會永遠等下去。檢查須排在限流與 trip 檢查**之後**，否則缺金鑰會變成繞過限流的免費探測窗口 |
 | 地點數上限 | schema `maxItems: 12` + 回傳後 `slice(0, 12)` |
 | 圖片大小上限 | **每張** base64 ≤ 4MB、**總量 ≤ 10MB**、**張數 ≤ 3**。**三道上限前後端都要做** —— 前端擋是為了不送註定失敗的請求、也不浪費每 IP 的額度；後端擋是防護（前端可繞過），且**必須排在 LLM 呼叫與 Supabase 查詢之前**，4MB 的 body 不該先去打 Supabase |
 | `too_large` 訊息 | 三種觸發要有**各自的文案**（「最多 3 張」／「這張截圖太大」／「幾張加起來太大」）。「選超過 3 張」不是「太大」。前端一律優先顯示後端回傳的 `message`，不得自寫一句通用文案蓋掉 |
@@ -795,7 +798,19 @@ caption 展開後常超過一屏，**一張截圖裝不下全部店名**。只�
 3. 指示中明寫：「這是**同一則貼文**的連續畫面，只產生**一組** `title` / `summary`，**同一家店只回一次**」
 4. 使用者填的 `text` 併在指示之前，標明為「使用者補充」
 
-強制 tool-use 在 `claude-haiku-4-5` 上不受多圖影響；`max_tokens` 維持 2048 即可（多圖增加的是 input）。
+強制 tool-use 在 `claude-haiku-4-5` 上不受多圖影響。
+
+> **`max_tokens` 裁定：4096（2026-09-03 修正，原寫 2048 是錯的）**
+>
+> 原本的理由「多圖增加的是 input」**本身沒錯，但答錯了問題** —— 決定 `max_tokens` 的不是圖片張數，
+> 是**輸出上界**：12 筆 × (`name` 60 + `nameJa` 60 + `area` 40 + `note` 60) ≈ 2,640 個中日文字，
+> 加上 `title` / `summary` 與 JSON 結構開銷，滿載時約 **3–4k tokens**。2048 會在最壞情況截斷，
+> 而被截斷的 `tool_use.input` 是**不完整但看起來合法的 JSON**，會靜默通過。
+>
+> 輸出 token 只在真的產生時才計費，提高上限不會讓一般情況變貴。
+> **另須檢查 `stop_reason === "max_tokens"` 並記 log** —— 上限再高也要知道自己撞到了。
+>
+> （由程式開發員於實作階段提出 Q-12，技術總監裁定改 PRD 而非改實作。）
 
 ---
 
