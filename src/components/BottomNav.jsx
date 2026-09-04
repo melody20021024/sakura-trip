@@ -1,11 +1,17 @@
 // C-05: fixed bottom tab bar. Each target is >=44px tall. Safe-area aware.
+
+// Explicit literals. `grid-cols-${tabs.length}` is scanned away by Tailwind at
+// build time and the six-column bar collapses into one column in production
+// while looking correct in dev (T-86 greps the built CSS for grid-cols-6).
+const COLS = { 5: "grid-cols-5", 6: "grid-cols-6" };
+
 export function BottomNav({ tabs, active, onChange }) {
   return (
     <nav
       className="fixed bottom-0 inset-x-0 z-20 bg-white/90 backdrop-blur border-t border-pink-100"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      <div className="max-w-2xl mx-auto grid grid-cols-5">
+      <div className={`max-w-2xl mx-auto grid ${COLS[tabs.length] || COLS[5]}`}>
         {tabs.map((t) => {
           const Ico = t.icon;
           const on = active === t.id;
