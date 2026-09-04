@@ -131,20 +131,20 @@ P1 → P2 → P3  合併 main → 部署 Vercel
 > **不升版號、不加任何新欄位、不新增任何 UI。** 這支分支的唯一目的是讓「未來版本的資料」在「今天的 bundle」上活得下來。
 > **本次同步完全未動這一段。**
 
-- [ ] **P1** `Preserve unknown fields through schema migration`
+- [x] **P1** `Preserve unknown fields through schema migration`
   - **範圍**：`src/lib/migrate.js`、`src/lib/__tests__/merge.test.js`
   - **涵蓋**：F-69（上半）
   - **說明**：`migrate()` 對 `raw.schemaVersion > SCHEMA_VERSION` 直接原樣回傳；`normalized` 改以 `...raw` 開頭讓未知欄位穿透。
   - **測試**：**T-70**（含未知欄位的 blob 遷移後欄位零損失）、**T-71**（`> SCHEMA_VERSION` 原樣回傳）、T-72（冪等 + 既有 `days`/`expenses`/`food` 零損失）
 
-- [ ] **P2** `Preserve unknown fields through trip merge`
+- [x] **P2** `Preserve unknown fields through trip merge`
   - **範圍**：`src/lib/merge.js`、`src/lib/__tests__/merge.test.js`
   - **前置**：P1
   - **涵蓋**：F-69（下半，PRD v3.5 §2.3 ② 已補上）
   - **說明**：`mergeTrip` 加 `KNOWN_TRIP_KEYS` + `passthrough()` 讓未知欄位穿透，並把 `schemaVersion` 由硬寫改為 `Math.max(local, remote, SCHEMA_VERSION)`，不再降版號。
   - **測試**：**T-70**（`mergeTrip(v4local, v5remote)` 後未知欄位仍在、版號不被降回 4）、`mergeTrip(a,a)` 仍冪等、既有 v2 合併測試全數通過
 
-- [ ] **P3** `Report a stale app version as a sync reason`
+- [x] **P3** `Report a stale app version as a sync reason`
   - **範圍**：`src/lib/schema.js`、`src/lib/__tests__/schema.test.js`（新增）
   - **前置**：P2
   - **涵蓋**：F-69（收尾）、F-77（前置）
@@ -155,7 +155,7 @@ P1 → P2 → P3  合併 main → 部署 Vercel
 
 ## Backend — `feature/pocket-parse-backend`
 
-- [ ] **B1** `Add the post parsing endpoint`
+- [x] **B1** `Add the post parsing endpoint`
   - **範圍**：`api/parse-post.js`（新增）、`api/_parse-lib.js`（新增）、`api/__tests__/parse-lib.test.js`（新增）、`package.json`（加 `@anthropic-ai/sdk`）
   - **前置**：無
   - **涵蓋**：F-70、**F-71（IG 主路徑）**
@@ -177,7 +177,7 @@ P1 → P2 → P3  合併 main → 部署 Vercel
     T-76 的階梯判斷層（`resolveSource` 五個順位）、**三道圖片上限各自回 `too_large`**、
     **`buildImageContent` 的 block 序列與順序**。T-76 的 HTTP 層、T-77、T-79 以 curl 對 preview 部署人工驗收。
 
-- [ ] **B2** `Document the version 5 trip schema`
+- [x] **B2** `Document the version 5 trip schema`
   - **範圍**：`supabase-schema.sql`
   - **前置**：無
   - **涵蓋**：F-73（資料落位說明）
@@ -190,21 +190,21 @@ P1 → P2 → P3  合併 main → 部署 Vercel
 
 > **F1 在 Phase 0 傳播確認完成前不得合併。**
 
-- [ ] **F1** `Add pockets and places to schema version 5`
+- [x] **F1** `Add pockets and places to schema version 5`
   - **範圍**：`src/lib/schema.js`、`src/lib/migrate.js`、`src/lib/merge.js`、`src/lib/__tests__/merge.test.js`、`src/lib/__tests__/schema.test.js`
   - **前置**：Phase 0 全部上線並傳播完成 ⛔
   - **涵蓋**：F-69（升版）、F-73、F-75、F-76
   - **說明**：`SCHEMA_VERSION = 4 → 5`；`DEFAULT.pockets = []` / `DEFAULT.places = []`；`LIST_FIELDS` 加 `"pockets"`, `"places"`；新增 `PLACE_BUDGET_BYTES = 900_000` 與 `PLACE_WARN_BYTES = 800_000`（PRD v3.5 §5.3）；`migrate` 加 `pockets`/`places` 的 `stamp`；`mergeTrip` 加兩行 `mergeList`。**`places`/`pockets` 刻意不進 `normalizeTrip` 的 `dedupeByContent`，並在程式碼留下註解說明理由。** 不加 `place.usedIn`、不擴充 `mergeDays`。
   - **測試**：**T-73**（`places` 是整筆 LWW，**不得**寫成欄位合併）、**T-74**（精簡 tombstone 不復活）、**T-75**（缺 string id → 驗證失敗）、T-72（v4→v5 冪等）
 
-- [ ] **F2** `Add stamped mutators for pockets and places`
+- [x] **F2** `Add stamped mutators for pockets and places`
   - **範圍**：`src/hooks/useTrip.js`
   - **前置**：F1
   - **涵蓋**：F-72、F-73、F-75、F-78
   - **說明**：`addPocketWithPlaces` / `addPocket` / `addPlaces` / `updatePlace` / `resolvePocket` / `deletePlace`（精簡 tombstone）/ `deletePocket`（連帶 tombstone 其下 places）/ `addPlaceToDay`（單次 commit 寫入 item 並帶 `placeId`）。全部沿用既有 `commit()` 管線，零新增同步機制。
   - **測試**：無獨立單測（hook 需 React 環境）；規則層由 F3 的純函式覆蓋，端到端由 T-83／T-84 人工驗收
 
-- [ ] **F3** `Add the place helpers and parse client`
+- [x] **F3** `Add the place helpers and parse client`
   - **範圍**：`src/lib/places.js`（新增）、`src/lib/share.js`（新增）、`src/lib/api.js`、`src/lib/image.js`、`src/lib/__tests__/places.test.js`（新增）、**`src/lib/__tests__/share.test.js`（新增）**
   - **前置**：F1
   - **涵蓋**：F-70、F-71、F-72、F-75、F-76、F-81、F-83
@@ -216,7 +216,7 @@ P1 → P2 → P3  合併 main → 部署 Vercel
   - **測試**：**T-97**（`suggestDays` 七個案例）、T-81 規則層、T-82 試算層、T-83 反查層、T-84 映射層、
     **`detectPlatform` 七個邊界（`?ref=instagram.com` 與 `fakeinstagram.com` 必須回 `other`）**
 
-- [ ] **F4** `Add the place detail sheet`
+- [x] **F4** `Add the place detail sheet`
   - **範圍**：`src/views/places/PlaceSheet.jsx`（新增）、`src/views/places/constants.js`（新增，僅 re-export `ITEM_TYPES`）、`src/components/ConfirmSheet.jsx`（**增修**）、`src/hooks/useConfirm.js`（**增修**）
   - **前置**：F3
   - **涵蓋**：F-74、PRD §6.4、S-17
@@ -228,7 +228,7 @@ P1 → P2 → P3  合併 main → 部署 Vercel
   - **測試**：人工（編輯 → 未存離開 → 確認框顯示「這個地點剛剛改的內容不會存起來。」而**不是**刪除警告；
     既有 4 個刪除確認畫面**逐一回歸確認文案未變**）
 
-- [ ] **F5** `Add the suggested day picker`
+- [x] **F5** `Add the suggested day picker`
   - **範圍**：`src/views/places/DayPickerSheet.jsx`（新增，含 C-25 DayChip）、**`src/components/ui.jsx`（增修：加 C-29 Toast）**
   - **前置**：F3
   - **涵蓋**：**F-75（本版賣點）**、F-72 的成功回饋
@@ -236,7 +236,7 @@ P1 → P2 → P3  合併 main → 部署 Vercel
     **C-29 放進 `components/ui.jsx`，不另開新檔**（PRD §6.2／DDR-29）。
   - **測試**：**T-97**（順序不變）、T-83／T-84 端到端人工
 
-- [ ] **F6** `Add the ingest sheet with review step`
+- [x] **F6** `Add the ingest sheet with review step`
   - **範圍**：`src/views/places/IngestSheet.jsx`（新增，含 C-20 ReviewRow）
   - **前置**：F2、F3、（契約）B1
   - **涵蓋**：F-70、F-72、F-78
@@ -246,7 +246,7 @@ P1 → P2 → P3  合併 main → 部署 Vercel
     **此 commit 不含平台分流與截圖上傳**（在 F6b）。
   - **測試**：**T-80**（覆核期間 `trip.data.places` 零變化）、**T-81**（低信心／已存過預設不勾）、**T-82**（容量擋下）、T-85（離線）—— 皆人工＋ devtools
 
-- [ ] **F6b** `Add platform aware layout and multi screenshot ingest`
+- [x] **F6b** `Add platform aware layout and multi screenshot ingest`
   - **範圍**：`src/views/places/IngestSheet.jsx`（含 **C-30 ShotPicker**）
   - **前置**：F6
   - **涵蓋**：**F-71（IG 主路徑）**、F-70（分流引導）
@@ -264,7 +264,7 @@ P1 → P2 → P3  合併 main → 部署 Vercel
     **T-99 已於 2026-09-02 完成**（PRD §7.5d，`OCR_MAX = 1568` / `OCR_QUALITY = 0.85`）；
     端點接起來後仍須用實際回傳結果複驗一次（實測判讀者是 Opus，不是 `claude-haiku-4-5`）。
 
-- [ ] **F7** `Add the Pocket view with pocket cards`
+- [x] **F7** `Add the Pocket view with pocket cards`
   - **範圍**：`src/views/places/PocketView.jsx`（新增，含 C-18 IngestBar、C-27 CapacityNotice）、`src/views/places/PocketCard.jsx`（新增）、`src/views/places/PlaceRow.jsx`（新增）
   - **前置**：F4、F5、F6b
   - **涵蓋**：F-73、F-74、F-76、F-78
@@ -274,7 +274,7 @@ P1 → P2 → P3  合併 main → 部署 Vercel
     `liveDays` 在此算一次往下傳。PlaceRow 視覺與 `ItemRow` 同源，地圖鈕永遠顯示。
   - **測試**：人工（S-01 空狀態文案**第一行是截圖**、不得出現「地圖／Google 清單」字樣；IG 來源的待解析卡顯示 S-06b 文案；badge「已加入 D2、D3」正確）
 
-- [ ] **F8** `Add the Pocket tab to the app shell`
+- [x] **F8** `Add the Pocket tab to the app shell`
   - **範圍**：`src/App.jsx`、`src/components/BottomNav.jsx`
   - **前置**：F7
   - **涵蓋**：F-73、**F-83**
