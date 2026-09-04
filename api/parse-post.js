@@ -92,11 +92,19 @@ async function tripExists(trip) {
   }
 }
 
+// 12 places × (name / nameJa / area / note, in CJK) runs to roughly 3–4k output
+// tokens, so the old 2048 was tight for a full list. A truncated
+// `tool_use.input` is still a valid-looking object, so it passes clampPlaces
+// silently and the user simply gets fewer places than the post contained.
+// Raise the ceiling and log when we hit it; output tokens are billed on use,
+// so the headroom costs nothing until it is needed.
+const MAX_OUTPUT_TOKENS = 4096;
+
 async function callAnthropic(content) {
   const client = new Anthropic();
   const msg = await client.messages.create({
     model: modelFor("anthropic"),
-    max_tokens: 2048,
+    max_tokens: MAX_OUTPUT_TOKENS,
     temperature: 0,
     system: SYSTEM_PROMPT,
     tools: [SAVE_PLACES_TOOL],
@@ -105,6 +113,12 @@ async function callAnthropic(content) {
     tool_choice: { type: "tool", name: "save_places" },
     messages: [{ role: "user", content }],
   });
+  if (msg.stop_reason === "max_tokens") {
+    console.warn(
+      "[parse-post] anthropic hit max_tokens; the place list may be truncated",
+      { model: modelFor("anthropic"), max_tokens: MAX_OUTPUT_TOKENS }
+    );
+  }
   const block = msg.content.find((b) => b.type === "tool_use");
   return block ? block.input : null;
 }
