@@ -129,6 +129,38 @@ describe("缺供應商金鑰 → not_configured（不是 rate_limited）", () =>
   });
 });
 
+describe("供應商呼叫失敗 → upstream_error(不是 rate_limited)", () => {
+  it("供應商拋錯時回 upstream_error,且不與限流共用 reason", async () => {
+    vi.stubEnv("PARSE_PROVIDER", "gemini");
+    vi.stubEnv("GEMINI_API_KEY", "k-present");
+    // 供應商那一次 fetch 直接拒絕 = 上游不通。這是這支測試唯一預期的網路呼叫。
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNRESET"); }));
+    const handler = await loadHandler();
+    const res = await call(handler, OK_TRIP);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.reason).toBe("upstream_error");
+    expect(res.body.message).toMatch(/暫時不通/);
+  });
+
+  it("upstream_error 的訊息與限流的訊息不同(兩者本來就不該混在一起)", async () => {
+    vi.stubEnv("PARSE_PROVIDER", "gemini");
+    vi.stubEnv("GEMINI_API_KEY", "k-present");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNRESET"); }));
+    const handler = await loadHandler();
+    const upstream = await call(handler, OK_TRIP);
+
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-present");
+    vi.stubEnv("PARSE_PROVIDER", "anthropic");
+    const h2 = await loadHandler();
+    let limited;
+    for (let i = 0; i <= 20; i++) limited = await call(h2, BARE_TRIP);
+
+    expect(limited.body.reason).toBe("rate_limited");
+    expect(upstream.body.reason).not.toBe(limited.body.reason);
+    expect(upstream.body.message).not.toBe(limited.body.message);
+  });
+});
+
 describe("trip 不存在與限流對外完全不可區分（中-2）", () => {
   // 兩者只要有一點不同,這支端點就成了「這個 trip key 存不存在」的探測器。
   async function rateLimitedBody() {
