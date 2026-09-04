@@ -150,6 +150,15 @@ const checkKey = (c) => `${c.name}|${c.meta || ""}`;
 const albumKey = (a) => `${a.label}|${a.url}`;
 
 // Normalise a trip: one day per date, and identical sample list-entries de-duped.
+//
+// `pockets` and `places` are deliberately NOT de-duped by content (PRD §5.4①).
+// Content de-dup runs on every merge — on load, on every realtime push, and
+// inside pushRemote's read-merge-write — so a single false positive is
+// permanent data loss: two different 一蘭 branches whose `area` was typed
+// loosely would be silently collapsed into one. Duplicate detection for places
+// lives in the F-72 review step instead (lib/places.js dedupeAgainstSaved),
+// where it only marks a row and leaves it unticked: the user sees it, can
+// override it, and the cost of a false positive is one extra tap.
 export function normalizeTrip(t) {
   if (!t) return t;
   return {
@@ -168,7 +177,7 @@ export function normalizeTrip(t) {
 const KNOWN_TRIP_KEYS = new Set([
   "schemaVersion", "tripName", "startDate", "endDate", "rate", "budgetJPY",
   "travelers", "flights", "days", "expenses", "food", "shopping", "packing",
-  "albums", "_v1backup",
+  "albums", "pockets", "places", "_v1backup",
 ]);
 
 // Carry unknown top-level fields across the merge. This bundle cannot merge a
@@ -215,6 +224,11 @@ export function mergeTrip(local, remote) {
     shopping: mergeList(local.shopping, remote.shopping),
     packing: mergeList(local.packing, remote.packing),
     albums: mergeList(local.albums, remote.albums),
+    // v5. Whole-record LWW, same as every other list: a place is small enough
+    // that field-level merging buys nothing, and `days` is the only structure
+    // that needs its children merged.
+    pockets: mergeList(local.pockets, remote.pockets),
+    places: mergeList(local.places, remote.places),
     // keep a one-time v1 backup if either side carries it
     ...(local._v1backup || remote._v1backup
       ? { _v1backup: local._v1backup || remote._v1backup }

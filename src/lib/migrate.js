@@ -51,6 +51,10 @@ export function migrate(raw) {
     shopping: (raw.shopping ?? []).map(stamp),
     packing: (raw.packing ?? []).map(stamp),
     albums: (raw.albums ?? []).map(stamp),
+    // v5. Absent on every pre-v5 blob, so this is what seeds the two lists;
+    // `stamp` only fills a missing updatedAt, it never rewrites an entry.
+    pockets: (raw.pockets ?? []).map(stamp),
+    places: (raw.places ?? []).map(stamp),
     ...(backup ? { _v1backup: backup } : {}),
   };
   return normalized;

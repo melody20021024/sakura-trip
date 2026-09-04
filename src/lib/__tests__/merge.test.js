@@ -345,3 +345,110 @@ describe("migrate — 未知欄位向前相容 (F-69, T-70/T-71/T-72)", () => {
     expect(once.places).toHaveLength(1);
   });
 });
+
+// v5 口袋地點. The two new lists ride the existing mergeList, so what needs
+// guarding is the shape of the records we feed it — in particular the compact
+// tombstone, which throws away every field except id/_deleted/updatedAt.
+describe("v5 pockets / places (F1)", () => {
+  const v5 = (over = {}) => trip({ schemaVersion: SCHEMA_VERSION, pockets: [], places: [], ...over });
+
+  // T-73: whole-record LWW, NOT a field-by-field merge. Two people editing
+  // different fields of the same place must not produce a frankenstein record —
+  // the newer edit wins outright, the way every other list behaves.
+  it("T-73: places 是整筆 LWW，不是欄位合併", () => {
+    const a = v5({ places: [{ id: "x1", name: "一蘭", area: "福岡", note: "本店", updatedAt: 100 }] });
+    const b = v5({ places: [{ id: "x1", name: "一蘭拉麵", area: "博多", note: "", updatedAt: 200 }] });
+
+    const merged = mergeTrip(a, b);
+    expect(merged.places).toHaveLength(1);
+    expect(merged.places[0]).toEqual({ id: "x1", name: "一蘭拉麵", area: "博多", note: "", updatedAt: 200 });
+    // 若寫成欄位合併,note 會留下較舊的「本店」—— 那才是錯的
+    expect(merged.places[0].note).toBe("");
+    expect(mergeTrip(b, a).places[0]).toEqual(merged.places[0]); // 交換律
+  });
+
+  it("T-73: pockets 同樣是整筆 LWW", () => {
+    const a = v5({ pockets: [{ id: "p1", title: "福岡美食", summary: "舊", updatedAt: 1 }] });
+    const b = v5({ pockets: [{ id: "p1", title: "福岡三日必吃", summary: "", updatedAt: 2 }] });
+    expect(mergeTrip(a, b).pockets[0].title).toBe("福岡三日必吃");
+    expect(mergeTrip(a, b).pockets[0].summary).toBe("");
+  });
+
+  // T-74: the compact tombstone { id, _deleted, updatedAt } is ~6.5x smaller
+  // than flattening the whole record. It only works if pick() still lets it win.
+  it("T-74: 精簡 tombstone 不會被舊編輯復活", () => {
+    const live = v5({ places: [{ id: "x1", name: "一蘭", area: "福岡", updatedAt: 100 }] });
+    const gone = v5({ places: [{ id: "x1", _deleted: true, updatedAt: 200 }] });
+
+    for (const merged of [mergeTrip(live, gone), mergeTrip(gone, live)]) {
+      expect(merged.places).toHaveLength(1);
+      expect(merged.places[0]._deleted).toBe(true);
+      expect(liveItems(merged.places)).toHaveLength(0);
+    }
+  });
+
+  it("T-74: updatedAt 平手時刪除仍然勝出", () => {
+    const live = v5({ places: [{ id: "x1", name: "一蘭", updatedAt: 100 }] });
+    const gone = v5({ places: [{ id: "x1", _deleted: true, updatedAt: 100 }] });
+    expect(mergeTrip(live, gone).places[0]._deleted).toBe(true);
+    expect(mergeTrip(gone, live).places[0]._deleted).toBe(true);
+  });
+
+  it("較新的編輯仍會復活整筆（與既有 listDelete 語意相同，非本設計引入的新風險）", () => {
+    const gone = v5({ places: [{ id: "x1", _deleted: true, updatedAt: 100 }] });
+    const edited = v5({ places: [{ id: "x1", name: "一蘭", updatedAt: 300 }] });
+    expect(mergeTrip(gone, edited).places[0]._deleted).toBeUndefined();
+  });
+
+  // PRD §5.4① — the reason this test exists is that adding places to
+  // dedupeByContent would be an easy, plausible-looking change to make later.
+  it("places / pockets 不進 dedupeByContent（誤判即永久資料遺失）", () => {
+    const t = v5({
+      places: [
+        { id: "x1", pocketId: "p1", name: "一蘭", area: "福岡", note: "", updatedAt: 1 },
+        { id: "x2", pocketId: "p1", name: "一蘭", area: "福岡", note: "", updatedAt: 1 },
+      ],
+      pockets: [
+        { id: "p1", title: "福岡", summary: "", createdAt: 1, updatedAt: 1 },
+        { id: "p2", title: "福岡", summary: "", createdAt: 1, updatedAt: 1 },
+      ],
+    });
+    // 內容完全相同的兩筆:flights/food 會被去重,places/pockets 必須原封不動
+    const out = normalizeTrip(t);
+    expect(out.places).toHaveLength(2);
+    expect(out.pockets).toHaveLength(2);
+  });
+
+  it("T-72: v4 → v5 遷移後既有資料零損失，且冪等", () => {
+    const v4 = {
+      schemaVersion: SCHEMA_VERSION - 1,
+      tripName: scalar("九州", 5),
+      travelers: scalar(["柔"]),
+      days: [{ id: "d1", date: "2026-06-10", city: scalar("福岡"), lodging: scalar("博多"),
+        items: [{ id: "i1", title: "拉麵", type: "food", updatedAt: 1 }] }],
+      flights: [{ id: "f1", label: "去程", updatedAt: 1 }],
+      expenses: [], food: [{ id: "c1", name: "一蘭", updatedAt: 1 }],
+      shopping: [], packing: [], albums: [],
+    };
+    const once = migrate(v4);
+    expect(once.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(once.pockets).toEqual([]); // 新欄位被種下
+    expect(once.places).toEqual([]);
+    expect(once.days[0].items).toHaveLength(1);
+    expect(once.flights).toHaveLength(1);
+    expect(once.food).toHaveLength(1);
+    expect(once.tripName).toEqual(scalar("九州", 5));
+    expect(migrate(once)).toBe(once); // 冪等
+  });
+
+  it("v4 資料若已帶著 pockets/places（來自更新的旅伴）遷移後不得被清空", () => {
+    const once = migrate({
+      schemaVersion: SCHEMA_VERSION - 1,
+      travelers: scalar(["柔"]),
+      pockets: [{ id: "p1", title: "福岡美食", updatedAt: 9 }],
+      places: [{ id: "x1", name: "一蘭", updatedAt: 9 }],
+    });
+    expect(once.pockets).toHaveLength(1);
+    expect(once.places[0].name).toBe("一蘭");
+  });
+});
