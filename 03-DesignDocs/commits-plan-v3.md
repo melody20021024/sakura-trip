@@ -283,6 +283,56 @@ P1 → P2 → P3  合併 main → 部署 Vercel
 
 ---
 
+## Frontend 修正輪 — `feature/pocket-places-frontend`（PR #25 審查後追加，6 commits）
+
+> 2026-09-07。程式審查員給「有條件通過」＋ 4 項中嚴重度（M1–M4）＋ 2 項低嚴重度（L1、L3）。
+> **不另開分支**：追加在同一支上，PR #25 自動更新，審查員一次複審。
+> 計畫外追加，依 `engineer.md` 立即補記於此。
+
+- [x] **R1** `Clear the pocket rawText after a successful parse`
+  - **範圍**：`src/lib/places.js`、`src/lib/__tests__/places.test.js`、`src/views/places/IngestSheet.jsx`
+  - **審查編號**：**M4**（中）
+  - **說明**：PRD F-78 明文「解析成功後清空 `rawText`」原本只做了 `pending:false` 那半。draft 組裝抽成 `draftPocketFrom()` 純函式才測得到。
+  - **測試**：`places.test.js` 新增 5 案（兩個方向都鎖）；突變測試確認會失敗
+
+- [x] **R2** `Extract the base64 image payload builder`
+  - **範圍**：`src/lib/image.js`、`src/lib/__tests__/image.test.js`（新檔）、`src/views/places/IngestSheet.jsx`
+  - **審查編號**：**L3**（低）
+  - **說明**：PRD §7.5a 陷阱 1 的那一行原本住在沒有測試環境的元件裡，零覆蓋。搬到 `lib/image.js` 成為 `toBase64Images()`。
+  - **測試**：`image.test.js` 8 案；突變測試確認會失敗
+
+- [x] **R3** `Focus the visible screenshot picker after a failed parse`
+  - **範圍**：`src/views/places/IngestSheet.jsx`、`src/views/places/__tests__/ingest-focus.test.js`（新檔）
+  - **審查編號**：**M2**（中，最嚴重）
+  - **說明**：S-21 的 `focus()` 原本打在 `display:none` 的 file input 上，是靜默 no-op；焦點改落在 C-30 可見的 `<label>`（`tabIndex={-1}` + focus ring）。
+  - **測試**：`ingest-focus.test.js` 5 案；瀏覽器實測 `document.activeElement`
+
+- [x] **R4** `Consume the share shortcut once per launch`
+  - **範圍**：`src/App.jsx`、`src/views/places/PocketView.jsx`
+  - **審查編號**：**M1**（中）
+  - **說明**：「已消費」上移到 `App`，與 `initialShare` 同層；原本住在會被卸載的 `PocketView`，等於 once per mount。
+  - **測試**：瀏覽器實測（切分頁兩次都不重開）
+
+- [x] **R5** `Remove the manual place bucket dead code`
+  - **範圍**：`src/hooks/useTrip.js`、`src/views/places/PocketCard.jsx`、`src/views/places/PocketView.jsx`
+  - **審查編號**：**M3**（中，技術總監裁定 S-07 退出 MVP）
+  - **說明**：移除零呼叫點的 `addPlaces` 與 `MANUAL_POCKET_ID` / `manualPlaces` 死碼。**`place.pocketId` 欄位保留**。S-13 逃生口不受影響。
+
+- [x] **R6** `Add a delete action to pending pocket cards`
+  - **範圍**：`src/views/places/PocketCard.jsx`、`src/views/places/PocketView.jsx`
+  - **審查編號**：**L1**（低）
+  - **說明**：S-06 待解析卡補刪除入口（沿用 C-16 ConfirmSheet），`subtitle` 在地點數為 0 時換句話。
+
+- [x] **R7** `Update the pocket design doc for the review fixes`
+  - **範圍**：`03-DesignDocs/frontend/pocket-v3.md`（v3.3.0）、`03-DesignDocs/commits-plan-v3.md`
+  - **說明**：回寫 §4.2 / §4.4.8 / §4.6 / §5.3b / §5.3d / §5.4 / §6 / §7.1。
+
+> **⚠️ 本分支 commit 數**：原計畫 9 → 實際 10（含計畫勾選）→ **修正輪後 17**，
+> 超過 `engineer.md` 的「每分支 ≤ 10 commits」。這是**審查後的修正輪**而非新功能規劃，
+> 拆成第二支分支只會讓同一份審查意見分散在兩個 PR、審查員得看兩次。**刻意留在同一支，列此備查。**
+
+---
+
 ## Frontend 收尾 — `feature/pocket-places-polish`（2 commits）
 
 > **在 `feature/pocket-places-frontend` 合併回 `main` 之後才開**（F10 需要 F8 建立的 `onGoTab`）。
