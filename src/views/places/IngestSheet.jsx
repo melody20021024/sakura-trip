@@ -107,7 +107,7 @@ function ReviewRow({ row, expanded, onToggleCheck, onToggleExpand, onChange }) {
 // component instead of two inline blocks is that two inline copies would drift
 // (DDR-31). In IG mode it keeps the primary look even after files are chosen:
 // it is still the main event of this step.
-function ShotPicker({ shots, emphasis, busy, disabled, max, onAdd, onRemove, inputRef }) {
+function ShotPicker({ shots, emphasis, busy, disabled, max, onAdd, onRemove, inputRef, focusRef }) {
   const primary = emphasis === "primary";
   const full = shots.length >= max;
   return (
@@ -117,12 +117,19 @@ function ShotPicker({ shots, emphasis, busy, disabled, max, onAdd, onRemove, inp
           已選 {shots.length} 張{full ? "・已達上限 3 張" : ""}
         </p>
       )}
+      {/* S-21 focus target. The <input> below is display:none and a display:none
+          element CANNOT take focus — focus() on it is a silent no-op, which is
+          exactly the bug this tabIndex fixes. The label is the thing the user
+          actually sees and taps, so it is the thing that gets the focus ring. */}
       <label
+        ref={focusRef}
+        tabIndex={-1}
         aria-label="選擇截圖"
         className={
-          primary
+          (primary
             ? "min-h-24 bg-rose-50 border-2 border-rose-300 text-rose-600 rounded-2xl py-5 text-sm font-medium flex flex-col items-center justify-center gap-1 cursor-pointer"
-            : "h-11 border border-dashed border-pink-200 text-rose-300 rounded-xl text-sm flex items-center justify-center gap-1 cursor-pointer"
+            : "h-11 border border-dashed border-pink-200 text-rose-300 rounded-xl text-sm flex items-center justify-center gap-1 cursor-pointer") +
+          " focus:outline-none focus:ring-2 focus:ring-rose-400 focus:ring-offset-1"
         }
       >
         <Camera size={primary ? 24 : 15} />
@@ -204,7 +211,8 @@ export function IngestSheet({ open, onClose, trip, cityHint = "", prefill, repar
   const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
 
   const textRef = useRef(null);
-  const shotInputRef = useRef(null);
+  const shotInputRef = useRef(null);   // the hidden <input type=file>: .click() only
+  const shotFocusRef = useRef(null);   // C-30's visible <label>: the S-21 focus target
   const shotBlockRef = useRef(null);
 
   // The layout mode is DERIVED, every render. No useState, no useEffect, no
@@ -252,11 +260,16 @@ export function IngestSheet({ open, onClose, trip, cityHint = "", prefill, repar
   // to the field that can actually rescue this attempt — which is not the same
   // field on every platform. Sending an IG user back to the post-text box pushes
   // her at an action that is impossible there, once per failure (DDR-11).
+  //
+  // The IG target is C-30's LABEL, never the file input it wraps: that input is
+  // className="hidden" (display:none) and the browser refuses focus on it
+  // without erroring, so focus() there silently leaves the cursor wherever it
+  // was — on IG, in the post-text box S-21 exists to steer away from.
   useEffect(() => {
     if (!open || !failReason || step !== "input") return;
-    const target = ig ? shotInputRef.current : textRef.current;
+    const target = ig ? shotFocusRef.current : textRef.current;
     const block = ig ? shotBlockRef.current : textRef.current;
-    target?.focus();
+    target?.focus({ preventScroll: true });
     block?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [open, failReason, step, ig]);
 
@@ -472,6 +485,7 @@ export function IngestSheet({ open, onClose, trip, cityHint = "", prefill, repar
                 onAdd={addShots}
                 onRemove={removeShot}
                 inputRef={shotInputRef}
+                focusRef={shotFocusRef}
               />
               {shotNote && <p className="text-[11px] text-amber-700 mt-1">{shotNote}</p>}
               {ig && (
