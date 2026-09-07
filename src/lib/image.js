@@ -56,3 +56,22 @@ export function compressImage(file, { max = THUMB_MAX, quality = THUMB_QUALITY }
     img.src = url;
   });
 }
+
+// v3 F-71: shots → the /api/parse-post `images[]` contract.
+//
+// compressImage returns a DATA URL ("data:image/jpeg;base64,/9j/4AAQ..."); the
+// endpoint contract wants RAW base64. Dropping this prefix is PRD §7.5a's first
+// named silent-failure trap: forget it and nothing throws anywhere — the request
+// is accepted, the model is handed a string it cannot decode as an image, and
+// the user just sees "AI 讀不懂我的截圖".
+//
+// It lives here, not inside IngestSheet, precisely so it can be tested.
+export const toBase64Images = (shots = []) =>
+  shots.map((s) => {
+    const dataUrl = String(s?.dataUrl ?? "");
+    const comma = dataUrl.indexOf(",");
+    return {
+      base64: comma === -1 ? dataUrl : dataUrl.slice(comma + 1),
+      mime: "image/jpeg", // compressImage always emits JPEG
+    };
+  });

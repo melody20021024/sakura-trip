@@ -4,7 +4,7 @@ import { Field } from "../../components/ui.jsx";
 import { byteSize, PLACE_BUDGET_BYTES, uid } from "../../lib/schema.js";
 import { dedupeAgainstSaved, pocketBytes, capacityCheck, draftPocketFrom } from "../../lib/places.js";
 import { detectPlatform } from "../../lib/share.js";
-import { compressImage, OCR_MAX, OCR_QUALITY } from "../../lib/image.js";
+import { compressImage, toBase64Images, OCR_MAX, OCR_QUALITY } from "../../lib/image.js";
 import { parsePost } from "../../lib/api.js";
 import { liveItems } from "../../lib/merge.js";
 import { ITEM_TYPES, typeOf } from "./constants.js";
@@ -324,14 +324,6 @@ export function IngestSheet({ open, onClose, trip, cityHint = "", prefill, repar
 
   const removeShot = (key) => { setShots((cur) => cur.filter((s) => s.key !== key)); setShotNote(""); };
 
-  // compressImage returns a DATA URL; the contract wants raw base64. Forgetting
-  // this line produces no error anywhere — just a model that cannot read the
-  // picture, and a user who concludes the feature does not work.
-  const toImages = (list) => list.map((s) => ({
-    base64: s.dataUrl.slice(s.dataUrl.indexOf(",") + 1),
-    mime: "image/jpeg",
-  }));
-
   // S-14. Offline we can only keep what is text: image bytes must never enter
   // the trip jsonb (PRD §5.5), so a screenshot cannot be stashed.
   const saveOffline = () => {
@@ -352,7 +344,7 @@ export function IngestSheet({ open, onClose, trip, cityHint = "", prefill, repar
     let res;
     try {
       res = await parsePost({
-        trip: trip.key, url: url.trim(), text, images: toImages(shots), cityHint,
+        trip: trip.key, url: url.trim(), text, images: toBase64Images(shots), cityHint,
       });
     } catch {
       // The endpoint itself always answers 200, so reaching here means the
