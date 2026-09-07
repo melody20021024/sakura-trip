@@ -79,22 +79,22 @@ function EmptyState({ onOpen, onGoTab }) {
 }
 
 // P-06. Owns the sheets and the one derived list every child needs.
-export function PocketView({ trip, confirm, onGoTab, initialShare }) {
+export function PocketView({ trip, confirm, onGoTab, initialShare, onShareConsumed }) {
   const [ingest, setIngest] = useState(null); // { prefill, reparseOf } | null
   const [placeOpen, setPlaceOpen] = useState(null);
   const [dayPickFor, setDayPickFor] = useState(null);
   const [toast, setToast] = useState(null);
   const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
 
-  // F-83: a shortcut launch opens the sheet already filled in. Once only —
-  // closing it must not immediately reopen it.
-  const [shareUsed, setShareUsed] = useState(false);
+  // F-83: a shortcut launch opens the sheet already filled in. Once per LAUNCH,
+  // not once per mount: this view is unmounted on every tab switch, so "used"
+  // cannot be remembered here. Tell App instead — it clears the share, this prop
+  // goes null, and coming back to 口袋 later opens nothing (T-96).
   useEffect(() => {
-    if (initialShare && !shareUsed) {
-      setShareUsed(true);
-      setIngest({ prefill: initialShare, reparseOf: null });
-    }
-  }, [initialShare, shareUsed]);
+    if (!initialShare) return;
+    setIngest({ prefill: initialShare, reparseOf: null });
+    onShareConsumed?.();
+  }, [initialShare, onShareConsumed]);
 
   useEffect(() => {
     const on = () => setOnline(true);

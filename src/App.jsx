@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Calendar, Wallet, ListChecks, Image as ImageIcon, Bookmark, Settings } from "lucide-react";
 import { useTrip } from "./hooks/useTrip.js";
 import { useConfirm } from "./hooks/useConfirm.js";
@@ -34,8 +34,15 @@ export default function App() {
   // F-83. Read before the first paint, so the ingest sheet opens already in the
   // right layout — the shortcut's link is usually an IG one, and deriving the
   // mode from it means the user never sees the wrong arrangement first.
-  const [share] = useState(() => parseShareParams(window.location.search));
+  const [share, setShare] = useState(() => parseShareParams(window.location.search));
   const [tab, setTab] = useState(() => (share ? "places" : "trip"));
+
+  // "Already used" has to live at the SAME level as the share itself. PocketView
+  // is unmounted every time the user leaves the 口袋 tab, so a flag kept down
+  // there resets on every return and reopens the sheet with a stale prefill —
+  // once per mount instead of once per launch. Clearing it here is once, for
+  // good: App outlives every tab switch.
+  const consumeShare = useCallback(() => setShare(null), []);
 
   // Strip the params immediately. The address bar is what gets copied to invite
   // a travel companion; a leftover ?share= would pop the sheet open on their
@@ -66,7 +73,13 @@ export default function App() {
         {tab === "lists" && <ListsView trip={trip} confirm={ask} />}
         {tab === "album" && <AlbumView trip={trip} confirm={ask} />}
         {tab === "places" && (
-          <PocketView trip={trip} confirm={ask} onGoTab={setTab} initialShare={share} />
+          <PocketView
+            trip={trip}
+            confirm={ask}
+            onGoTab={setTab}
+            initialShare={share}
+            onShareConsumed={consumeShare}
+          />
         )}
         {tab === "setting" && <SettingView trip={trip} />}
       </main>
