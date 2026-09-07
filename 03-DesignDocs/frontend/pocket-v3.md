@@ -4,8 +4,8 @@
 
 :::info
 功能名稱：v3 口袋地點（截圖／貼上收藏 → AI 解析覆核 → 建議日期 → 寫入行程 → 導航）
-版本：**3.2.2**（**2026-09-04 依 PRD v3.11 回寫**；前版 3.2.1 依 PRD v3.10、3.2.0 依 PRD v3.9、3.1.0 依 PRD v3.7 / UI spec v3.1）
-最後更新：2026-09-04
+版本：**3.3.0**（**2026-09-07 依 PR #25 審查意見回寫**；前版 3.2.2 依 PRD v3.11、3.2.1 依 PRD v3.10、3.2.0 依 PRD v3.9、3.1.0 依 PRD v3.7 / UI spec v3.1）
+最後更新：2026-09-07
 作者：程式開發員
 :::
 
@@ -61,6 +61,23 @@
 > | 1 | 全文版本引用 v3.10 → **v3.11** | 標頭、§1 |
 > | 2 | 修好 v3.2.1 摘要表後方缺少的 `>` —— 它讓下面「本文件為增修／涵蓋範圍／不涵蓋」三行在 GitHub 上被吃進表格、渲染成表格列。**那三行正是驗收範圍的界定文字** | 本節 |
 >
+
+> **v3.3.0 同步摘要（2026-09-07 依 PR #25 程式審查員意見回寫）**
+>
+> 審查結論為「有條件通過」，四項中嚴重度 + 兩項低嚴重度已於同一支分支修正。
+> 本次是**先改實作、再回寫文件**，因為四項全部是「文件說 A、實作做 B」或「實作沒做到文件說的」：
+>
+> | # | 審查編號 | 變更 | 影響章節 |
+> |---|---|---|---|
+> | 1 | **M3** | **S-07「📌 自己加的地點」退出 MVP**（技術總監裁定）。`addPlaces` mutator、`MANUAL_POCKET_ID`、`manualPlaces` 虛擬卡全數移除。**`place.pocketId` 欄位保留** | **§4.2**、§5.3d、**§5.4**、§5.7、§9 |
+> | 2 | **M4** | 解析成功後**必須清空 `rawText`**（PRD F-78 明文，原本只做了 `pending:false`）。draft 組裝抽成 `places.js` 的 `draftPocketFrom()` 純函式 | **§4.4.8**、§4.6、§7.1 |
+> | 3 | **M2** | **S-21 的焦點目標改成 C-30 可見的 `<label>`**（`tabIndex={-1}`），不再是 `display:none` 的 `<input type="file">`——後者 `focus()` 是 no-op | **§5.3b**、§6 難點 9 |
+> | 4 | **M1** | F-83 的「已消費」狀態上移到 `App`（原本住在會被卸載的 `PocketView`，等於 once per mount） | §5.3d |
+> | 5 | **L3** | `toImages` 移到 `lib/image.js` 的 **`toBase64Images()`** 並補測試——PRD §7.5a 陷阱 1 原本零覆蓋 | **§4.6**、§7.1 |
+> | 6 | **L1** | S-06 待解析卡**補上刪除入口**（沿用 C-16 ConfirmSheet），並讓 `subtitle` 在地點數為 0 時換句話 | §5.4、§5.3d |
+>
+> **待上游處理（本文件不得代改）**：UI spec `ui-spec-v3-pocket.md` 的 S-07（§5.5 狀態表、§6.2）
+> 與 S-06 動作列需同步；清單見 PR #25 的修正 comment。
 
 ## 1. 相關連結
 
@@ -132,6 +149,7 @@ App.jsx (C)                                   # 🔧 6 tab、?share= 開機處�
     ├── share.js    # 🆕 parseShareParams / stripShareParams / shortcutPrefix
     │               #    + detectPlatform（PRD §5.3 §6.2 裁定落位;比對 hostname,禁用 includes）
     ├── image.js    # 🔧 新增 OCR_MAX = 1568 / OCR_QUALITY = 0.85（不動既有 THUMB_* 預設）
+    │                #    v3.3.0 併入 toBase64Images()（原 IngestSheet 內的 toImages）
     └── api.js      # 🔧 新增 parsePost()（images[] 契約）
 ```
 
@@ -196,8 +214,11 @@ interface PocketMutators {
   /** F-78 離線暫存 / 手動建立空 pocket。 */
   addPocket(pocket: Partial<Pocket>): string;             // 回傳 pocketId
 
-  /** S-13「自己輸入一個地點」的退路，以及未來手動新增。pocketId 傳 "" 即為 S-07。 */
-  addPlaces(places: Array<Partial<Place>>): string[];
+  // ⚠️ v3.3.0 移除 addPlaces()。原設計是「S-13『自己輸入一個地點』的退路，
+  // pocketId 傳 "" 即為 S-07」，但實作的 S-13 退路走的是覆核步驟 →
+  // addPocketWithPlaces（失敗當下確實有來源連結，做成真的 pocket 才對），
+  // 於是 addPlaces 全庫零呼叫點、S-07 也永遠產不出來（PR #25 M3）。
+  // 技術總監裁定：S-07 退出 MVP，死碼移除。詳見 §5.4。
 
   /** C-23 明確「儲存」鈕。patch 只含使用者改過的欄位。 */
   updatePlace(id: string, patch: Partial<Place>): void;
@@ -439,6 +460,30 @@ export function capacityCheck(data, pocket, places = []) {
 `PLACE_BUDGET_BYTES = 900_000`（擋下）與 `PLACE_WARN_BYTES = 800_000`（黃字預警）**皆由 PRD v3.5 §5.3 正式定義**，
 一律以具名常數引用，元件內不得寫死數字（UI spec §6.4 硬性）。
 
+#### 4.4.8 `draftPocketFrom()` — F-78 `rawText` 生命週期（v3.3.0 新增）
+
+PRD §4.2 F-78 錯誤處理欄明文：**「解析成功後清空 `rawText`、`pending` 設 false」**。
+v3.2.2 的實作只做了後半 —— `pending:false` 的 pocket 仍帶著整段貼文文字（PR #25 M4）。
+
+```js
+// rawText 只有一個讀者:S-06 待解析卡的重新解析預填。解析一旦成功,pocket 底下
+// 已經有 places 了,那段文字再也沒有人讀。
+export function draftPocketFrom({ title, summary, sourceUrl, platform, rawText, pending, fallbackTitle = "收藏的貼文" }) {
+  return { title: title || fallbackTitle, summary, sourceUrl, platform,
+           rawText: pending ? rawText : "",   // ← 這一行就是 F-78 的後半條
+           pending };
+}
+```
+
+| 為什麼值得抽成純函式 | 說明 |
+|---|---|
+| 這不是資料遺失，是**預算模型**問題 | PRD §5.5 以「一筆 pocket ≈ 194B」估容量，**F-76 的 900KB 門檻整個建立在這個數字上**。留著幾千字的 caption，等於讓容量保護在遠比預期早的時候撞牆 |
+| 原本測不到 | 它原本是 `IngestSheet` 裡的一個物件字面值，本專案的元件層沒有測試環境（§7.2），所以這條 PRD 明文規定沒有任何東西守著 |
+| 兩個呼叫點共用 | `commitReview` 的 `draftPocket`（`pending:false`）與 `saveOffline`（`pending:true`）走同一支，兩種狀態的差別只有這一個布林 |
+
+> `pending:true` **必須**保留 `rawText` —— 那正是 S-06「重新解析」預填的來源。測試兩個方向都鎖。
+
+
 ### 4.5 `src/lib/share.js` — `detectPlatform()`（v3.1 新增，PRD §5.3／§6.2 裁定落位）
 
 ```js
@@ -501,12 +546,24 @@ async function addShots(fileList, current) {
   return [...current, ...out];
 }
 
-// 送出時才轉成契約格式（§5.2）
-const toImages = (shots) => shots.map((s) => ({
-  base64: s.dataUrl.slice(s.dataUrl.indexOf(",") + 1),      // 去掉 "data:image/jpeg;base64,"
-  mime: "image/jpeg",                                       // compressImage 一律輸出 JPEG
-}));
+// 送出時才轉成契約格式（§5.2）。v3.3.0 起住在 lib/image.js,不在元件裡 ——
+// 見下方「為什麼搬家」。
+export const toBase64Images = (shots = []) => shots.map((s) => {
+  const dataUrl = String(s?.dataUrl ?? "");
+  const comma = dataUrl.indexOf(",");
+  return {
+    base64: comma === -1 ? dataUrl : dataUrl.slice(comma + 1),  // 去掉 "data:image/jpeg;base64,"
+    mime: "image/jpeg",                                         // compressImage 一律輸出 JPEG
+  };
+});
 ```
+
+> **為什麼 v3.3.0 把它從 `IngestSheet` 搬到 `lib/image.js`**（PR #25 L3）：
+> 這一行是 PRD §7.5a 點名的**第一個靜默失敗陷阱** —— 漏掉不會有任何錯誤，請求照送、後端照收，
+> 只是 LLM 拿到一個它解不開的字串，使用者看到的是「AI 認不出我的截圖」。
+> 它原本住在沒有測試環境的元件裡（§7.2），也就是**全案最容易壞、又最沒人守著**的一行。
+> 搬進 `lib/` 之後由 `image.test.js` 覆蓋，順便補上 `indexOf` 回傳 `-1`（已經是裸 base64）
+> 時原寫法會吃掉第一個字元的邊界。
 
 | 規則 | 規格 |
 |---|---|
@@ -542,11 +599,12 @@ type TabId = "trip" | "money" | "lists" | "album" | "places" | "setting";
 |---|---|
 | `liveDays` | `liveItems(trip.data.days).sort(by date)` —— 算一次，往下傳給每個 PlaceRow / DayPickerSheet |
 | `livePlaces` / `livePockets` | `liveItems(...)`；pockets 依 `createdAt` **新→舊** |
-| 分組 | `placesByPocket = groupBy(livePlaces, "pocketId")`；`pocketId === ""` 的收集成 S-07 虛擬卡「📌 自己加的地點」，固定置底 |
+| 分組 | `placesByPocket = groupBy(livePlaces, "pocketId")`。**v3.3.0：不再收集 `pocketId === ""` 的 S-07 虛擬卡**（S-07 退出 MVP，見 §5.4 裁定）。兩條寫入路徑（`addPocketWithPlaces` / `resolvePocket`）都會蓋上真實 `pocketId`，所以這一桶必然是空的 |
 | S-01 空狀態 | `!livePockets.length && !livePlaces.length`。**文案硬性（v3.1）**：第一行必須是「滑 IG 看到想去的店，**截一張有說明文字的圖**丟進來」，第二行才講其他平台可以貼連結／文字。**不得**把「貼上貼文文字」寫成 IG 的做法（T-98 已證實做不到）、**不得**暗示裝了捷徑就能自動存下 IG 內容（DDR-32）、**不得**出現「地圖／地圖總覽／連結 Google 帳號／同步我的清單」字樣（PRD §4.5、風險 #15）|
 | C-18 IngestBar | **一顆按鈕，不是輸入框**（DDR-10b）。點擊 → `setIngestOpen(true)`。說明文案（v3.1）：「看到想去的店，把**截圖**、連結或貼文文字丟進來，我幫你拆成地點、再告訴你排哪一天。」（**截圖排第一個**）|
 | C-27 CapacityNotice | `capacityCheck(...).warn` 為真時常駐 |
-| `initialShare` | 非 null 時，首次 render 就以預填內容開啟 C-19（F-83）|
+| `initialShare` | 非 null 時，首次 render 就以預填內容開啟 C-19（F-83），並立刻呼叫 `onShareConsumed()` 回報已消費 |
+| `onShareConsumed` | **v3.3.0 新增（PR #25 M1）**。「已消費」這件事**必須跟 `initialShare` 住在同一層**：`App` 一次只掛載一個分頁，切走分頁＝`PocketView` 卸載＝本地的 `shareUsed` 歸零，於是每次切回口袋頁面板都重開、還帶著舊 prefill（程式碼註解寫「once only」，實際是 once **per mount**）。改由 `App` 持有 `share` 並在收到回報時 `setShare(null)`，清一次就永遠是清的 |
 
 ### 5.2 IngestSheet.jsx（C-19, C）
 
@@ -688,9 +746,22 @@ interface ShotPickerProps {
   max: number;                          // = MAX_SHOTS (3)
   onAdd: (files: FileList) => void;     // 交給 §4.6 的 addShots
   onRemove: (key: string) => void;      // 逐張移除
-  inputRef?: React.Ref<HTMLInputElement>;  // S-21 失敗時 focus() 的目標
+  inputRef?: React.Ref<HTMLInputElement>;  // 隱藏的 <input type=file>:只給 .click()
+  focusRef?: React.Ref<HTMLLabelElement>;  // 可見的 <label>:S-21 失敗時 focus() 的目標
 }
 ```
+
+> **v3.3.0 修正（PR #25 M2）——`inputRef` 不是、也不可能是 S-21 的焦點目標。**
+> v3.2.2 把 `focus()` 打在 `className="hidden"`（`display:none`）的 `<input type="file">` 上。
+> **`display:none` 的元素不可聚焦，`focus()` 是 no-op：瀏覽器不報錯，也不給焦點。**
+> 實測（IG 模式、解析失敗後）焦點停在 `#ing-text` —— 正是 S-21 設計來避開的那一欄，
+> 等於整個 v3.6 改版在 IG 這條主路徑上沒有發生。
+>
+> 焦點目標改為包住該 input 的 `<label>`：它是使用者真正看得到、按得到的東西，
+> 加上 `tabIndex={-1}` 使其可程式化聚焦（但不進 Tab 序），並補 `focus:ring-2 focus:ring-rose-400`
+> 讓這次焦點移動**看得見**——焦點移到一個沒有視覺回饋的區塊，對使用者等同沒移動。
+> `focus({ preventScroll: true })` 把捲動交還給既有的 `shotBlockRef.scrollIntoView`。
+> 由 `src/views/places/__tests__/ingest-focus.test.js` 鎖住（原始碼靜態驗證，同 `bottom-nav.test.js` 模式）。
 
 | 項目 | 規格 |
 |---|---|
@@ -726,7 +797,7 @@ interface ToastProps {
 
 ```typescript
 interface Props {
-  pocket: Pocket | { id: "__manual__"; title: "自己加的地點" };  // S-07 為虛擬 pocket
+  pocket: Pocket;                      // v3.3.0：不再有 S-07 虛擬 pocket，見下方裁定
   places: Place[];
   liveDays: Day[];
   defaultOpen: boolean;                // DDR-22：最新一則預設展開
@@ -743,7 +814,24 @@ interface Props {
 | S-04 收合 / S-05 展開 | 本地 `useState(defaultOpen)` |
 | S-06 待解析 | `pocket.pending === true` → `border-dashed` ＋「⏳ 待解析」＋顯示 `rawText \|\| sourceUrl` 前 40 字 ＋主按鈕「**重新解析**」→ 開 C-19，**以 `pocket.rawText` 預填貼文文字欄、以 `pocket.sourceUrl` 預填連結欄**（PRD §5.2）。開啟後 `mode` 由 `detectPlatform(sourceUrl)` 自動算出，IG 直接是 S-20。離線時按鈕停用並顯示「回到網路再試」 |
 | **S-06b 待解析且來源是 IG** | `pocket.pending && detectPlatform(pocket.sourceUrl) === "instagram"` → 按鈕文案改為「**補一張截圖再解析**」。<br/>理由：離線存不下截圖（PRD §5.5 硬性），IG 又只有截圖這條路；寫「重新解析」會讓使用者以為按下去就會自己跑完（DDR-25／PRD §4.2 F-78 裁定）。**這是誠實標示限制，不是解決它——本設計不規劃任何 blob 暫存機制** |
-| S-07 手動新增 | `pocket.id === "__manual__"` → 無來源連結、**不可刪整張卡**、固定置底 |
+| ~~S-07 手動新增~~ | **v3.3.0 退出 MVP**，見下方裁定 |
+
+> **S-07「📌 自己加的地點」退出 v3 MVP（2026-09-07，技術總監裁定，PR #25 M3）**
+>
+> | 項目 | 內容 |
+> |---|---|
+> | 發現 | `useTrip.addPlaces` 全庫**零呼叫點**；沒有任何路徑會寫出 `pocketId === ""`，所以 S-07 在本版**無法被產生**，`manualPlaces` 區塊、`MANUAL_POCKET_ID` 分支、`manual` 旗標全是永遠不會執行到的分支 |
+> | 為什麼會這樣 | 設計文件 §4.2 原本寫「S-13 的退路走 `addPlaces`，`pocketId` 傳 `""`」，實作走的是覆核步驟 → `addPocketWithPlaces`。**實作的選擇是對的**：解析失敗當下手上確實有來源連結，做成真的 pocket 才留得住「之後回去看原貼文」這件事。錯的是文件沒跟著改、而 A 方案的碼也留著 |
+> | 裁定 | **移除死碼，S-07 退出 MVP。** 新增一整條「手動加地點」的 UI 流程屬範圍蔓延，而核心迴路（貼文 → 解析 → 覆核 → 排行程）不需要它 |
+> | **保留** | **`place.pocketId` 欄位保留**（PRD §5.2 資料模型不變）。未來要做手動桶時不必再遷移 schema |
+> | 未受影響 | S-13「自己輸入一個地點」逃生口**完全不動** —— 它從來沒用過 `addPlaces` |
+> | 已知既有缺口（非本次引入） | 若某個 place 的 pocket 在他機被刪、而本機的編輯較新（LWW 復活），該 place 會指向一個已 tombstone 的 pocket → 畫面上看不到但仍占容量。這在 S-07 存在時**也一樣看不到**（它被歸在舊 `pocketId` 底下，不是 `""`），所以不是移除 S-07 造成的退步。列入 Phase 1.5 的孤兒回收 |
+
+> **S-06 補刪除入口（v3.3.0，PR #25 L1）**：待解析卡原本只渲染「重新解析／補一張截圖再解析／回到網路再試」，
+> **沒有任何刪除入口**。離線存了一則、回線後截圖找不到或不想收藏了，這張卡就永久留在口袋頁最上面
+> （`createdAt` 最新 → 排第一 → 還預設展開）。現補一顆次要的「刪除這則待解析」，走既有的 C-16 ConfirmSheet，
+> 並讓 `PocketView.deletePocket` 的 `subtitle` 在地點數為 0 時改說「旅伴端也會一併移除,無法復原。」
+> ——「底下的 **0** 個地點也會一起刪掉」會讓人停下來重讀一次。**UI spec §5.5 的 S-06 動作列需同步。**
 
 ### 5.5 PlaceRow.jsx（C-22, P）
 
@@ -952,14 +1040,14 @@ const [tab, setTab] = useState(() => (share ? "places" : "trip"));
 | 6 | **容量試算的效能** | 基準值 `useMemo` 綁 `trip.data` 只算一次，增量另算（§4.4.6），避免每次勾選都序列化 1MB |
 | 7 | **`pockets`/`places` 誤入 `dedupeByContent` 會造成永久資料遺失** | `normalizeTrip` 完全不碰這兩個欄位，並在程式碼留下註解說明理由（後端文件 §5.2）|
 | 8 | **badge 與行程可能不同步** | 不存 `usedIn`；badge 由 `daysForPlace()` 每次 render 反查，資料上是同一份（DDR-23／T-83）|
-| 9 | **解析失敗是常態不是例外**（IG 幾乎必失敗）| 失敗不換頁、不清空；焦點**依平台分流**：一般模式送貼文文字欄（S-13）、IG 模式送 C-30 截圖選擇器（S-21）。依 `reason` × 模式給文案（DDR-11）。**v3.0 一律聚焦文字欄是錯的**——那是把使用者推回一個做不到的動作 |
+| 9 | **解析失敗是常態不是例外**（IG 幾乎必失敗）| 失敗不換頁、不清空；焦點**依平台分流**：一般模式送貼文文字欄（S-13）、IG 模式送 C-30 截圖選擇器（S-21）。依 `reason` × 模式給文案（DDR-11）。**v3.0 一律聚焦文字欄是錯的**——那是把使用者推回一個做不到的動作。**v3.3.0 補**：分流本身要成立，焦點目標必須是**真的能拿到焦點的元素**——`display:none` 的 `<input type="file">` 上 `focus()` 是靜默 no-op，寫了等於沒寫（§5.3b） |
 | 10 | **截圖讀不出日文店名 → 直接決定 IG 能不能用** | `image.js` 新增 **`OCR_MAX = 1568` / `OCR_QUALITY = 0.85`**，**不動**既有 `THUMB_MAX = 320`（購物清單縮圖照舊）。**T-99 已於 2026-09-02 完成**（PRD §7.5d）：1024/0.7 下灰色小字（區域／備註）明顯發糊，1568/0.85 下店名與小字皆銳利。**若日後再調這兩個常數，須重跑同樣的對照並回寫 PRD §7.5d** |
 | 11 | **`onGoTab` 需要穿三層** | `App` → `PocketView` → `DayPickerSheet` / `CapacityNotice`。以單一 `onGoTab(tabId)` prop 傳遞，不引入 context（規模不值得）|
 | 12 | **模式切換不能重建 DOM** | 欄位順序用 flex `order` 切換而非條件渲染兩套 JSX。iOS Safari 在 DOM 重建時會收起鍵盤，且 `<input type="file">` 的已選檔案狀態會遺失（UI spec §8）。捲動位置須維持在連結欄可見，不得因重排把使用者捲到面板底部 |
 | 13 | **`mode` 若做成 state 會出現「連結已是 IG、版面還沒換」的中間畫面** | `mode` 一律是 `detectPlatform(url)` 的**衍生值**，無 `useState`／`useEffect`（§5.2）。可逆性與「不搶焦點」因此是結構上的保證，不靠額外邏輯 |
 | 14 | **`?ref=instagram.com` 誤判** | `detectPlatform` **比對 hostname 並以 `(^\|\.)…$` 錨定，禁用 `includes`**（§4.5）。誤判的代價是把使用者送去截圖死路，或反之讓她按一次註定失敗的「解析看看」 |
 | 15 | **三張 1568px 圖同時壓縮的記憶體尖峰** | `compressImage` **逐張** await，不用 `Promise.all`；壓縮中顯示「處理中…」且不阻塞面板其他欄位（§4.6）|
-| 16 | **`compressImage` 回傳 data URL，契約要純 base64** | 送出前以 `dataUrl.slice(indexOf(",") + 1)` 去前綴、`mime` 固定 `"image/jpeg"`（§4.6 `toImages`）。**這是最容易漏掉的一行**——漏了會讓後端拿到 `data:image/jpeg;base64,...` 當 base64，LLM 直接讀圖失敗 |
+| 16 | **`compressImage` 回傳 data URL，契約要純 base64** | 送出前去前綴、`mime` 固定 `"image/jpeg"`（§4.6 `toBase64Images`）。**這是最容易漏掉的一行**——漏了會讓後端拿到 `data:image/jpeg;base64,...` 當 base64，LLM 直接讀圖失敗。**v3.3.0 起這行住在 `lib/image.js` 並有 `image.test.js` 守著**：最容易靜默失敗的一行不該住在沒有測試環境的元件裡 |
 | 17 | **只帶 IG 連結時不得送出** | 那次請求 100% 落到 `need_text_or_image`，且白白吃掉每 IP 20 次/小時的額度（DDR-27）。主按鈕改為「選擇截圖」＝開檔案選擇器；要硬送只能按逃生口「還是先試試這個連結」|
 
 ---
@@ -972,8 +1060,10 @@ const [tab, setTab] = useState(() => (share ? "places" : "trip"));
 |---|---|---|
 | `src/lib/__tests__/merge.test.js`（擴充）| **T-70**、**T-71**、T-72、**T-73**、T-74 | v5 blob 餵 v4 邏輯欄位零損失；`> SCHEMA_VERSION` 原樣回傳；連跑兩次遷移結果相同；`places` 是**整筆 LWW**（兩端改不同欄位 → 較新者整筆勝，**不得**寫成欄位合併）；精簡 tombstone 不復活 |
 | `src/lib/__tests__/schema.test.js`（新增）| T-75 | `pockets`/`places` 缺 string `id` → `validateTrip` 失敗；`schemaVersion > 5` → reason 為「App 版本過舊」 |
-| `src/lib/__tests__/places.test.js`（新增）| **T-97**、T-81（規則層）、T-82（試算層）、T-83（反查層）、T-84（映射層）| `suggestDays` 的 7 個案例（§4.4.3）；`dedupeAgainstSaved` 的 4 個邊界（§4.4.2）；`daysForPlace` 多天／空 placeId；`capacityCheck` 構造接近 900KB 的 trip；`placeToItem` 的 `type === category` |
+| `src/lib/__tests__/places.test.js`（新增）| **T-97**、T-81（規則層）、T-82（試算層）、T-83（反查層）、T-84（映射層）、**F-78 `rawText`（v3.3.0）**| `suggestDays` 的 7 個案例（§4.4.3）；`dedupeAgainstSaved` 的 4 個邊界（§4.4.2）；`daysForPlace` 多天／空 placeId；`capacityCheck` 構造接近 900KB 的 trip；`placeToItem` 的 `type === category`；**`draftPocketFrom` 兩個方向**——`pending:false` 必清空 `rawText`、`pending:true` 必保留，且清空後的體積不隨 caption 長度成長（§4.4.8）|
 | **`src/lib/__tests__/share.test.js`（新增，v3.1）** | — （支撐 S-20／S-21 分流的正確性）| **`detectPlatform` 的 7 個邊界（§4.5）**，其中 `?ref=instagram.com` 與 `fakeinstagram.com` 必須回 `other`；`parseShareParams` / `stripShareParams` 的參數解析與清除 |
+| **`src/lib/__tests__/image.test.js`（新增，v3.3.0）** | —（PRD §7.5a 陷阱 1）| **`toBase64Images` 的 data URL 去前綴**：不得殘留 `data:` 開頭或逗號、`mime` 固定 `image/jpeg`、多張順序一對一、空清單、以及「已經是裸 base64（無逗號）」不得被吃掉第一個字元；順帶鎖住 `OCR_MAX/QUALITY = 1568/0.85` 與 `THUMB_MAX/QUALITY = 320/0.6` 未被 v3 動到 |
+| **`src/views/places/__tests__/ingest-focus.test.js`（新增，v3.3.0）** | —（**S-21 焦點**，PR #25 M2）| 原始碼靜態驗證（同 `bottom-nav.test.js` 模式，本專案無 jsdom）：① file input 仍是 `className="hidden"`（前提）② **`shotInputRef` 絕不可以是 `focus()` 目標** ③ IG 分支的目標是 `shotFocusRef` ④ 該 `<label>` 帶 `tabIndex={-1}` ⑤ 一般模式仍聚焦 `#ing-text`。把實作退回修正前，②③④ 三條會失敗 |
 | `api/__tests__/parse-lib.test.js`（新增）| **T-78**、T-76（階梯判斷層）| `clampPlaces` 超過 12 筆被截斷、非法 category 落回 `other`、confidence 夾在 0..1；`resolveSource` 五個順位各自可達；**`images[]` 的三道上限（張數／單張／總量）各自回 `too_large`**；**`buildImageContent` 產出的 block 序列**（N 個標號 text + N 個 image + 1 個指示 text，且指示文字在最後）|
 
 ### 7.2 只能人工驗收（本專案未安裝 jsdom / @testing-library/react）

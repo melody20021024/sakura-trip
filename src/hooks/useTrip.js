@@ -5,6 +5,7 @@ import { pullRemote, pushRemote, subscribeRemote } from "../lib/sync.js";
 import { mergeTrip, normalizeTrip } from "../lib/merge.js";
 import { migrate } from "../lib/migrate.js";
 import { freshDefault, uid, now } from "../lib/schema.js";
+import { placeToItem } from "../lib/places.js";
 
 const PUSH_DEBOUNCE = 600;
 const MAX_RETRY = 3;
@@ -190,6 +191,20 @@ export function useTrip() {
   const dayMutate = (dayId, fn) =>
     commit({ ...d(), days: d().days.map((day) => (day.id === dayId ? { ...day, ...fn(day), updatedAt: now() } : day)) });
 
+  // ---- v3 口袋地點 (F-72/73/75/78) ----
+  // All of these ride the existing commit() pipeline. The feature adds no sync
+  // machinery of its own.
+  const newPocket = (pocket, t) => ({
+    id: uid(), title: "", sourceUrl: "", platform: "other", summary: "",
+    rawText: "", pending: false, createdAt: t, updatedAt: t, ...pocket,
+  });
+  const newPlaces = (places, pocketId, t, from = 0) =>
+    places.map((p, i) => ({
+      id: uid(), pocketId, name: "", nameJa: "", category: "other", area: "",
+      note: "", lat: null, lng: null, geoSource: "", photoUrl: "",
+      order: from + i, updatedAt: t, ...p,
+    }));
+
   const mutators = {
     setField,
     setTravelers,
@@ -237,6 +252,92 @@ export function useTrip() {
     // albums
     addAlbum: (a) => listAdd("albums", a),
     deleteAlbum: (id) => listDelete("albums", id),
+
+    // ---- pockets / places (v3) ----
+    // F-72's only write path. The pocket and its N places go in ONE commit: two
+    // commits would leave a window where the trip has a pocket and no places,
+    // and a realtime push landing in that window merges the half-written state
+    // out to everyone. Same reasoning for resolvePocket and deletePocket.
+    addPocketWithPlaces: (pocket, places = []) => {
+      const t = now();
+      const rec = newPocket(pocket, t);
+      const recs = newPlaces(places, rec.id, t);
+      commit({ ...d(), pockets: [...d().pockets, rec], places: [...d().places, ...recs] });
+      return { pocketId: rec.id, placeIds: recs.map((r) => r.id) };
+    },
+
+    // F-78: offline stash, or an empty pocket created by hand.
+    addPocket: (pocket) => {
+      const t = now();
+      const rec = newPocket(pocket, t);
+      commit({ ...d(), pockets: [...d().pockets, rec] });
+      return rec.id;
+    },
+
+    // C-23's explicit save button. `patch` carries only what the user changed.
+    updatePlace: (id, patch) =>
+      commit({ ...d(), places: d().places.map((x) => (x.id === id ? { ...x, ...patch, updatedAt: now() } : x)) }),
+
+    // F-78: a pending pocket parsed successfully — promote it and attach its
+    // places, in one commit.
+    resolvePocket: (pocketId, pocket, places = []) => {
+      const t = now();
+      const recs = newPlaces(places, pocketId, t);
+      commit({
+        ...d(),
+        pockets: d().pockets.map((x) =>
+          x.id === pocketId ? { ...x, pending: false, ...pocket, updatedAt: t } : x),
+        places: [...d().places, ...recs],
+      });
+      return recs.map((r) => r.id);
+    },
+
+    // Compact tombstone { id, _deleted, updatedAt } instead of the generic
+    // listDelete's flattened record: ~58B against ~377B, and nothing ever reads
+    // a tombstone's fields (liveItems filters them before render). pick() still
+    // lets it win — a strictly newer updatedAt, and _deleted wins ties.
+    deletePlace: (id) =>
+      commit({ ...d(), places: d().places.map((x) => (x.id === id ? { id, _deleted: true, updatedAt: now() } : x)) }),
+
+    // Tombstone the pocket AND its live places together, or we leave orphan
+    // places pointing at a deleted pocket: invisible in the UI, still counted
+    // against the 1MB budget.
+    deletePocket: (pocketId) => {
+      const t = now();
+      commit({
+        ...d(),
+        pockets: d().pockets.map((x) => (x.id === pocketId ? { id: x.id, _deleted: true, updatedAt: t } : x)),
+        places: d().places.map((x) =>
+          x.pocketId === pocketId && !x._deleted ? { id: x.id, _deleted: true, updatedAt: t } : x),
+      });
+    },
+
+    // F-75. One commit writes the item AND its placeId, so the itinerary entry
+    // and the 「已加入 D2」 badge (which is a reverse lookup over exactly this
+    // field) can never disagree.
+    addPlaceToDay: (dayId, place) => {
+      const t = now();
+      const itemId = uid();
+      commit({
+        ...d(),
+        days: d().days.map((day) => {
+          if (day.id !== dayId) return day;
+          return {
+            ...day,
+            updatedAt: t,
+            items: [...day.items, {
+              id: itemId,
+              order: day.items.filter((i) => !i._deleted).length, // same as addItem
+              time: "",
+              mapUrl: "",
+              ...placeToItem(place), // title / type / note / placeId
+              updatedAt: t,
+            }],
+          };
+        }),
+      });
+      return itemId;
+    },
   };
 
   return { key, clientId, lsAvailable, data, syncState, pending, retry, focusField, blurField, ...mutators };

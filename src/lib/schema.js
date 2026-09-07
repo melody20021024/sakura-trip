@@ -7,7 +7,12 @@
 // v4: travelers became a last-write-wins scalar { v:[...], updatedAt } instead
 //     of a unioned array, so removing a traveller (e.g. the old 我) actually
 //     sticks instead of being merged back in.
-export const SCHEMA_VERSION = 4;
+// v5: pockets[] / places[] (v3 口袋地點) and days[].items[].placeId.
+//     Raising this number is gated on the forward-compat fix (migrate.js +
+//     merge.js) having shipped AND propagated to every device — a bundle that
+//     predates it rebuilds the blob from a whitelist and would push a copy with
+//     pockets/places stripped. See 03-DesignDocs/merge-gates.md G-01.
+export const SCHEMA_VERSION = 5;
 
 export const uid = () => Math.random().toString(36).slice(2, 9);
 export const now = () => Date.now();
@@ -119,6 +124,10 @@ export const DEFAULT = {
   shopping: [],
   packing: [],
   albums: [],
+  // v5: one entry per saved social post, and the places extracted from it.
+  // A place with pocketId === "" was added by hand (UI S-07).
+  pockets: [],
+  places: [],
 };
 
 // Deep clone of DEFAULT so callers never share the sample object.
@@ -130,6 +139,15 @@ export const freshDefault = () =>
 // --- validation / size guard (F-07) ---
 export const MAX_JSON_BYTES = 1_000_000; // 1MB jsonb soft limit
 
+// F-76 capacity guard for the pocket (v3). Two thresholds, both named: the UI
+// must never hard-code these numbers (UI spec §6.4).
+//   WARN   — a standing amber notice on P-06, blocks nothing.
+//   BUDGET — projected size before a write; over it we refuse the write.
+// Both sit below MAX_JSON_BYTES so we stop the user before validateTrip does,
+// while there is still room to act.
+export const PLACE_BUDGET_BYTES = 900_000;
+export const PLACE_WARN_BYTES = 800_000;
+
 export function byteSize(data) {
   try {
     return new Blob([JSON.stringify(data)]).size;
@@ -140,7 +158,10 @@ export function byteSize(data) {
 
 // List fields whose items must each carry a string id; mergeList drops id-less
 // items, so we reject up front rather than lose data silently.
-const LIST_FIELDS = ["flights", "days", "expenses", "food", "shopping", "packing", "albums"];
+const LIST_FIELDS = [
+  "flights", "days", "expenses", "food", "shopping", "packing", "albums",
+  "pockets", "places", // v5
+];
 
 // Returns { ok, reason }. Cheap structural sanity check before pushing.
 export function validateTrip(data) {
