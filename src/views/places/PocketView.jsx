@@ -155,8 +155,12 @@ export function PocketView({ trip, confirm, onGoTab, initialShare, onShareConsum
 
   const deletePocket = async (pocket) => {
     const n = (byPocket.get(pocket.id) || []).length;
+    // A 待解析 pocket (S-06) has no places under it yet, and 「底下的 0 個地點也會
+    // 一起刪掉」 is a sentence that makes the reader stop and re-read.
     const ok = await confirm(`確定要刪除「${pocket.title}」整則收藏嗎？`, {
-      subtitle: `底下的 ${n} 個地點也會一起刪掉,旅伴端同樣會移除。`,
+      subtitle: n
+        ? `底下的 ${n} 個地點也會一起刪掉,旅伴端同樣會移除。`
+        : "旅伴端也會一併移除,無法復原。",
     });
     if (ok) trip.deletePocket(pocket.id);
   };

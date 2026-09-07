@@ -44,6 +44,17 @@ export function PocketCard({
         >
           {label}
         </button>
+        {/* A stash the user no longer wants must have a way out. Offline she saved
+            an IG post, back online the screenshot is gone or she changed her mind —
+            without this the card sits at the top of the pocket forever (newest
+            createdAt, default-expanded) and cannot be removed from the UI at all.
+            Same C-16 confirm as every other delete, so nothing new is learned. */}
+        <button
+          onClick={() => onDeletePocket(pocket)}
+          className="w-full text-[11px] text-rose-300 underline mt-2 py-1 flex items-center justify-center gap-1"
+        >
+          <Trash2 size={11} /> 刪除這則待解析
+        </button>
       </Card>
     );
   }
