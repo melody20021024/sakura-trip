@@ -274,16 +274,6 @@ export function useTrip() {
       return rec.id;
     },
 
-    // S-13's 「自己輸入一個地點」 escape hatch. pocketId "" means the manual
-    // bucket (UI S-07).
-    addPlaces: (places = [], pocketId = "") => {
-      const t = now();
-      const mine = d().places.filter((p) => !p._deleted && p.pocketId === pocketId);
-      const recs = newPlaces(places, pocketId, t, mine.length);
-      commit({ ...d(), places: [...d().places, ...recs] });
-      return recs.map((r) => r.id);
-    },
-
     // C-23's explicit save button. `patch` carries only what the user changed.
     updatePlace: (id, patch) =>
       commit({ ...d(), places: d().places.map((x) => (x.id === id ? { ...x, ...patch, updatedAt: now() } : x)) }),

@@ -6,7 +6,7 @@ import { byteSize, PLACE_WARN_BYTES } from "../../lib/schema.js";
 import { IngestSheet } from "./IngestSheet.jsx";
 import { PlaceSheet } from "./PlaceSheet.jsx";
 import { DayPickerSheet } from "./DayPickerSheet.jsx";
-import { PocketCard, MANUAL_POCKET_ID } from "./PocketCard.jsx";
+import { PocketCard } from "./PocketCard.jsx";
 
 // C-27: capacity. Both thresholds come from named constants — the numbers must
 // not be written into a component (UI spec §6.4).
@@ -128,6 +128,11 @@ export function PocketView({ trip, confirm, onGoTab, initialShare, onShareConsum
     [liveDays]
   );
 
+  // Every place belongs to a pocket: the only two write paths (addPocketWithPlaces
+  // and resolvePocket) both stamp a real pocketId. S-07 「📌 自己加的地點」 —— the
+  // pocketId === "" manual bucket —— is OUT of the v3 MVP (see 03-DesignDocs
+  // /frontend/pocket-v3.md §5.4), so no bucket is collected for it. The FIELD
+  // stays in the schema for a later phase; only the UI is gone.
   const byPocket = useMemo(() => {
     const m = new Map();
     for (const p of livePlaces) {
@@ -139,7 +144,6 @@ export function PocketView({ trip, confirm, onGoTab, initialShare, onShareConsum
     return m;
   }, [livePlaces]);
 
-  const manualPlaces = byPocket.get("") || [];
   const empty = !livePockets.length && !livePlaces.length;
 
   const openIngest = (prefill = null, reparseOf = null) => setIngest({ prefill, reparseOf });
@@ -193,20 +197,6 @@ export function PocketView({ trip, confirm, onGoTab, initialShare, onShareConsum
               onAddToTrip={setDayPickFor}
             />
           ))}
-          {/* S-07: places with no source post, pinned to the bottom. */}
-          {manualPlaces.length > 0 && (
-            <PocketCard
-              pocket={{ id: MANUAL_POCKET_ID, title: "📌 自己加的地點", summary: "", platform: "other" }}
-              places={manualPlaces}
-              liveDays={liveDays}
-              defaultOpen
-              online={online}
-              onReparse={() => {}}
-              onDeletePocket={() => {}}
-              onOpenPlace={setPlaceOpen}
-              onAddToTrip={setDayPickFor}
-            />
-          )}
         </>
       )}
 

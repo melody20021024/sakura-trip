@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   ChevronDown, ChevronUp, ExternalLink, Instagram, Link as LinkIcon,
-  Pin, Trash2, Youtube,
+  Trash2, Youtube,
 } from "lucide-react";
 import { Card } from "../../components/ui.jsx";
 import { openUrl } from "../../lib/schema.js";
@@ -11,15 +11,12 @@ import { PlaceRow } from "./PlaceRow.jsx";
 
 const PLATFORM_ICON = { instagram: Instagram, youtube: Youtube };
 
-export const MANUAL_POCKET_ID = "__manual__";
-
 // C-21: one saved post, with the places it produced.
 export function PocketCard({
   pocket, places, liveDays, defaultOpen, online,
   onReparse, onDeletePocket, onOpenPlace, onAddToTrip,
 }) {
   const [open, setOpen] = useState(!!defaultOpen);
-  const manual = pocket.id === MANUAL_POCKET_ID;
 
   // S-06 / S-06b: an offline stash waiting to be parsed.
   if (pocket.pending) {
@@ -51,7 +48,7 @@ export function PocketCard({
     );
   }
 
-  const Ico = manual ? Pin : PLATFORM_ICON[pocket.platform] || LinkIcon;
+  const Ico = PLATFORM_ICON[pocket.platform] || LinkIcon;
 
   return (
     <Card>
@@ -70,19 +67,16 @@ export function PocketCard({
       </div>
       {pocket.summary && <p className="text-xs text-rose-400 mt-0.5 mb-2 line-clamp-2">{pocket.summary}</p>}
 
-      {!manual && (
-        <div className="flex items-center gap-3 text-[11px] text-rose-300 mb-2">
-          {pocket.sourceUrl && (
-            <button onClick={() => openUrl(pocket.sourceUrl)} className="underline flex items-center gap-1">
-              <ExternalLink size={11} /> 開原貼文
-            </button>
-          )}
-          {/* S-07 has no delete: it is a virtual card, not a record. */}
-          <button onClick={() => onDeletePocket(pocket)} className="underline flex items-center gap-1">
-            <Trash2 size={11} /> 刪除整則
+      <div className="flex items-center gap-3 text-[11px] text-rose-300 mb-2">
+        {pocket.sourceUrl && (
+          <button onClick={() => openUrl(pocket.sourceUrl)} className="underline flex items-center gap-1">
+            <ExternalLink size={11} /> 開原貼文
           </button>
-        </div>
-      )}
+        )}
+        <button onClick={() => onDeletePocket(pocket)} className="underline flex items-center gap-1">
+          <Trash2 size={11} /> 刪除整則
+        </button>
+      </div>
 
       {open && (
         <div className="space-y-1.5">
