@@ -140,3 +140,31 @@ export function capacityCheck(data, pocket, places = []) {
     warn: base > PLACE_WARN_BYTES,
   };
 }
+
+// --- F-78 pocket draft (PRD §4.2 F-78 / §5.5) ----------------------------
+// The record IngestSheet writes, built here rather than inline so the one rule
+// that is easy to get wrong is testable.
+//
+// That rule: `rawText` is the raw post text the user pasted, and it exists for
+// exactly one job — refilling the sheet when a PENDING pocket is re-parsed
+// (F-78 / S-06). The moment a parse succeeds the pocket has places, and the
+// text has no reader left. PRD F-78 says so in as many words: 「解析成功後清空
+// rawText、pending 設 false」.
+//
+// Keeping it is not a data-loss bug, it is a budget bug: PRD §5.5 costs a
+// pocket at ~194B and F-76's 900KB guard is built on that number. A few
+// thousand characters of caption per pocket makes the wall arrive far earlier
+// than the model predicts.
+export function draftPocketFrom({
+  title = "", summary = "", sourceUrl = "", platform = "other",
+  rawText = "", pending = false, fallbackTitle = "收藏的貼文",
+} = {}) {
+  return {
+    title: title || fallbackTitle,
+    summary,
+    sourceUrl,
+    platform,
+    rawText: pending ? rawText : "",
+    pending,
+  };
+}

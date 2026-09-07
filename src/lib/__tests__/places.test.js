@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   normalizeName, dedupeAgainstSaved, suggestDays, daysForPlace,
-  placeToItem, pocketBytes, capacityCheck,
+  placeToItem, pocketBytes, capacityCheck, draftPocketFrom,
 } from "../places.js";
 import { scalar, freshDefault, PLACE_BUDGET_BYTES, PLACE_WARN_BYTES } from "../schema.js";
 
@@ -239,5 +239,44 @@ describe("capacityCheck / pocketBytes (F-76 / T-82)", () => {
     const base = { ...freshDefault(), _bulk: "x".repeat(PLACE_BUDGET_BYTES - 5_000) };
     expect(capacityCheck(base, pocket, heavy).ok).toBe(false);
     expect(capacityCheck(base, pocket, places).ok).toBe(true);
+  });
+});
+
+// PRD §4.2 F-78「解析成功後清空 rawText、pending 設 false」。
+// 這條先前只做了後半：成功存入的 pocket 仍帶著整段貼文文字，把 §5.5「一筆
+// pocket ≈ 194B」的估算（也就是 F-76 900KB 門檻的基礎）整個打掉。
+describe("draftPocketFrom — F-78 rawText 生命週期", () => {
+  const caption = "福岡三日必吃：一蘭拉麵 福岡總本店、元祖博多だるま…".repeat(20);
+
+  it("解析成功（pending:false）一律清空 rawText", () => {
+    const d = draftPocketFrom({ title: "福岡必吃", rawText: caption, pending: false });
+    expect(d.rawText).toBe("");
+    expect(d.pending).toBe(false);
+  });
+
+  it("離線暫存（pending:true）必須保留 rawText —— S-06 重新解析靠它預填", () => {
+    const d = draftPocketFrom({ title: "待解析", rawText: caption, pending: true });
+    expect(d.rawText).toBe(caption);
+    expect(d.pending).toBe(true);
+  });
+
+  it("清空後的體積回到 §5.5 的量級（不隨 caption 長度成長）", () => {
+    const short = draftPocketFrom({ rawText: "短", pending: false });
+    const long = draftPocketFrom({ rawText: caption, pending: false });
+    expect(pocketBytes(long, [])).toBe(pocketBytes(short, []));
+  });
+
+  it("title 空字串走預設「收藏的貼文」，有值則照用", () => {
+    expect(draftPocketFrom({}).title).toBe("收藏的貼文");
+    expect(draftPocketFrom({ title: "福岡必吃" }).title).toBe("福岡必吃");
+    expect(draftPocketFrom({ title: "", fallbackTitle: "待解析" }).title).toBe("待解析");
+  });
+
+  it("其餘欄位原樣帶過，且不多帶未定義的鍵", () => {
+    const d = draftPocketFrom({ summary: "s", sourceUrl: "https://x/y", platform: "instagram" });
+    expect(d).toEqual({
+      title: "收藏的貼文", summary: "s", sourceUrl: "https://x/y",
+      platform: "instagram", rawText: "", pending: false,
+    });
   });
 });

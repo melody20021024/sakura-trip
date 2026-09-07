@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, ChevronDown, ChevronUp, Link2, Loader2, X } from "lucide-react";
 import { Field } from "../../components/ui.jsx";
 import { byteSize, PLACE_BUDGET_BYTES, uid } from "../../lib/schema.js";
-import { dedupeAgainstSaved, pocketBytes, capacityCheck } from "../../lib/places.js";
+import { dedupeAgainstSaved, pocketBytes, capacityCheck, draftPocketFrom } from "../../lib/places.js";
 import { detectPlatform } from "../../lib/share.js";
 import { compressImage, OCR_MAX, OCR_QUALITY } from "../../lib/image.js";
 import { parsePost } from "../../lib/api.js";
@@ -269,14 +269,16 @@ export function IngestSheet({ open, onClose, trip, cityHint = "", prefill, repar
 
   const savedPlaces = liveItems(trip.data?.places || []);
   const checkedRows = rows.filter((r) => r.checked);
-  const draftPocket = {
-    title: collection.title || "收藏的貼文",
+  // pending:false, so draftPocketFrom drops rawText — a parsed pocket has its
+  // places, and the caption behind them has no reader left (F-78, §5.5 budget).
+  const draftPocket = draftPocketFrom({
+    title: collection.title,
     summary: collection.summary,
     sourceUrl: url.trim(),
     platform: detectPlatform(url),
     rawText: text,
     pending: false,
-  };
+  });
   const draftPlaces = checkedRows.map((r) => ({
     name: r.name, nameJa: r.nameJa, category: r.category, area: r.area, note: r.note,
   }));
@@ -333,13 +335,13 @@ export function IngestSheet({ open, onClose, trip, cityHint = "", prefill, repar
   // S-14. Offline we can only keep what is text: image bytes must never enter
   // the trip jsonb (PRD §5.5), so a screenshot cannot be stashed.
   const saveOffline = () => {
-    trip.addPocket({
+    trip.addPocket(draftPocketFrom({
       title: "待解析",
       sourceUrl: url.trim(),
       platform: detectPlatform(url),
       rawText: text,
-      pending: true,
-    });
+      pending: true, // the one state where rawText is kept: S-06 refills from it
+    }));
     onDone?.({ count: 0, pending: true });
     onClose();
   };
